@@ -232,21 +232,15 @@ Client
 
 ---
 
-## 前端规划（后续）
+## 前端（对话台）
 
-当前仓库为 **纯后端网关**。计划中的控制台 / 对话前端建议：
+独立仓库 [`agent-gateway-web`](../agent-gateway-web)（与本仓平级）：
 
-| 项 | 建议 |
-|---|---|
-| 框架 | **React 18+ + TypeScript + Vite** |
-| UI | 自有设计体系或轻量组件库（避免与网关品牌冲突的默认紫系皮肤） |
-| 对话 | `EventSource` / `fetch` 流式消费 SSE（`meta` / `thinking` / `tool` / `confirm` / `answer` / `done`） |
-| 确认卡 | 解析 `confirm` JSON 的 `confirmId`，调用 `/v1/confirms/{id}/approve\|deny`（同样 SSE） |
-| 管理面 | 租户、API Key、MCP Server、工具策略 CRUD |
-| 鉴权 | `Authorization: Bearer sk_...` 或 `X-Api-Key` |
-| 部署 | 静态资源独立站点或反向代理到同域 `/`，API 走 `/v1` `/admin` |
+- 设计：[docs/specs/2026-11-05-chat-console-design.md](docs/specs/2026-11-05-chat-console-design.md)
+- 空态居中输入 → 会话态消息流；确认卡 / 取消 / 本地会话
+- 本地：`npm run dev`（:5173），gateway 需允许 CORS（默认已含 Vite Origin）
 
-前端仓库建议与本仓库平级新建（例如 `agent-gateway-web`），通过 OpenAPI（`/swagger-ui.html`）契约联调。
+管理控制台（租户 / MCP / 策略）仍待后续。
 
 ---
 

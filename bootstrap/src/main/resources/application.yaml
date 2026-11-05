@@ -70,6 +70,9 @@ gateway:
     admin-api-key: ${GATEWAY_ADMIN_API_KEY:}
     # 种子租户名称
     admin-tenant-name: ${GATEWAY_ADMIN_TENANT_NAME:platform}
+  cors:
+    # 浏览器前端 Origin 白名单（逗号分隔）；Vite 默认 5173
+    allowed-origins: ${GATEWAY_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
 
 # OpenAPI / Swagger UI（默认开启；生产可设 springdoc.api-docs.enabled=false）
 springdoc:
