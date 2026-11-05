@@ -1,0 +1,22 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: agent-gateway
+  datasource:
+    url: jdbc:postgresql://localhost:5432/agent_gateway
+    username: gateway
+    password: gateway
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+gateway:
+  secret:
+    master-key: ${GATEWAY_SECRET_MASTER_KEY:}
+  run-gate:
+    max-concurrent-per-tenant: 5
+  confirm:
+    timeout-seconds: 300
