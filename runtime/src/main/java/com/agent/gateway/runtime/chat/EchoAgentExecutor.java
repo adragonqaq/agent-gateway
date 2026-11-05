@@ -1,6 +1,7 @@
 package com.agent.gateway.runtime.chat;
 
 import com.agent.gateway.runtime.ConfirmGate;
+import com.agent.gateway.runtime.PendingConfirmation;
 import com.agent.gateway.tenant.TenantContext;
 import com.agent.gateway.tools.CatalogTool;
 import com.agent.gateway.tools.ResolvedCatalog;
@@ -14,7 +15,8 @@ import java.util.stream.Collectors;
 /**
  * 回显执行器，不调用大模型。
  * <p>所属模块：runtime。默认模式，用于本地联调：回放目录中的工具名并回显用户消息；
- * 对 requireConfirm=true 的工具会挂 ConfirmGate 并发出 confirm 事件。
+ * 对 requireConfirm=true 的工具会挂 ConfirmGate 并发出 confirm 事件；
+ * approve/deny 后以确定性 answer 续跑。
  */
 @Component
 @ConditionalOnProperty(name = "gateway.agent.mode", havingValue = "echo", matchIfMissing = true)
@@ -34,13 +36,11 @@ public class EchoAgentExecutor implements AgentExecutor {
 
     /**
      * {@inheritDoc}
-     * <p>产出 thinking、tool、confirm（如有）、answer、done 事件，并把本轮消息写入会话快照。
      */
     @Override
     public void run(TenantContext tenant, String taskId, String conversationId, String message,
                     ResolvedCatalog catalog, String priorState,
                     Consumer<AgentEvent> events, Consumer<String> stateSaver) {
-        // 即使不建 Agent，也要刷新指纹，目录变更才能被观测到
         fingerprintTracker.getOrRebuild(tenant.tenantId(), catalog);
         events.accept(new AgentEvent("thinking", "planning with " + catalog.tools().size() + " tools"));
         String toolNames = catalog.tools().stream().map(CatalogTool::name).collect(Collectors.joining(","));
@@ -54,15 +54,39 @@ public class EchoAgentExecutor implements AgentExecutor {
                 .map(t -> new ConfirmPayloadFactory.ToolCall(t.name(), "{}"))
                 .toList();
         if (!needingConfirm.isEmpty()) {
-            // echo 也走真实 ConfirmGate，便于无模型联调 approve/deny API
+            // echo 也走真实 ConfirmGate，便于无模型联调 approve/deny 续跑
             String payload = ConfirmPayloadFactory.suspendAndSerialize(
-                    confirmGate, tenant.tenantId(), taskId, null, needingConfirm);
+                    confirmGate, tenant.tenantId(), taskId, conversationId, null, needingConfirm);
             events.accept(new AgentEvent("confirm", payload));
+            // 挂起本轮，不发最终 answer/done；由 resumeConfirm 收口
+            stateSaver.accept("{\"awaitingConfirm\":true,\"last\":\"" + message.replace("\"", "'") + "\"}");
+            return;
         }
 
         events.accept(new AgentEvent("answer", "echo: " + message));
         events.accept(new AgentEvent("done", "ok"));
-        // 引号换成单引号，避免快照 JSON 被用户输入截断
         stateSaver.accept("{\"last\":\"" + message.replace("\"", "'") + "\"}");
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>按批准/拒绝输出确定性文案，模拟工具已执行或已取消。
+     */
+    @Override
+    public void resumeConfirm(TenantContext tenant, String resumeTaskId, List<PendingConfirmation> settled,
+                              boolean approved, ResolvedCatalog catalog,
+                              Consumer<AgentEvent> events, Consumer<String> stateSaver) {
+        String tools = settled.stream().map(PendingConfirmation::toolName).collect(Collectors.joining(","));
+        if (approved) {
+            events.accept(new AgentEvent("tool", tools));
+            events.accept(new AgentEvent("answer", "confirmed: " + tools));
+        } else {
+            events.accept(new AgentEvent("answer", "denied: " + tools));
+        }
+        events.accept(new AgentEvent("done", "ok"));
+        String conv = settled.isEmpty() ? "" : settled.get(0).conversationId();
+        stateSaver.accept("{\"lastConfirm\":\"" + (approved ? "approved" : "denied")
+                + "\",\"tools\":\"" + tools.replace("\"", "'") + "\",\"conversationId\":\""
+                + (conv == null ? "" : conv) + "\"}");
     }
 }

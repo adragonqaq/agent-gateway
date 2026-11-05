@@ -43,7 +43,7 @@ class ConfirmGateTest {
     @Test
     void timeoutBecomesDenied() {
         ConfirmGate gate = new ConfirmGate(jdbc, clock, Duration.ofSeconds(10));
-        String id = gate.suspend("tA", "task1", "delete_order", "{}");
+        String id = gate.suspend("tA", "task1", "conv1", "delete_order", "{}");
         now.set(Instant.parse("2026-01-01T00:01:00Z"));
         assertEquals(ConfirmDecision.EXPIRED, gate.get("tA", id).status());
     }
@@ -51,7 +51,7 @@ class ConfirmGateTest {
     @Test
     void otherTenantCannotConfirm() {
         ConfirmGate gate = new ConfirmGate(jdbc, clock, Duration.ofSeconds(300));
-        String id = gate.suspend("tA", "task1", "delete_order", "{}");
+        String id = gate.suspend("tA", "task1", "conv1", "delete_order", "{}");
         assertThrows(NotFoundException.class, () -> gate.confirm("tB", id));
     }
 }

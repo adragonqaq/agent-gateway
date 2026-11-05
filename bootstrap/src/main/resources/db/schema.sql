@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS gw_confirm (
     id              VARCHAR(64) PRIMARY KEY,
     tenant_id       VARCHAR(64) NOT NULL,
     task_id         VARCHAR(64) NOT NULL,
+    conversation_id VARCHAR(64),
     tool_name       VARCHAR(128) NOT NULL,
     args_json       TEXT NOT NULL,
     status          VARCHAR(32) NOT NULL,

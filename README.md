@@ -130,7 +130,7 @@ export GATEWAY_LLM_MODEL=gpt-4o-mini
 | `POST /admin/tenants/{id}/tool-policies` | 写入工具 ALLOW/DENY 与是否需确认 |
 | `POST /v1/chat` | SSE 对话（`thinking` / `tool` / `confirm` / `answer` / `done`） |
 | `POST /v1/runs/{taskId}/cancel` | 取消任务（跨租户返回 404） |
-| `POST /v1/confirms/{id}/approve\|deny` | 人工确认 / 拒绝（`id` 来自 SSE `confirm` 事件的 `confirmId`） |
+| `POST /v1/confirms/{id}/approve\|deny` | 人工确认 / 拒绝并 **SSE 续跑**（`id` 来自 `confirm` 事件的 `confirmId`） |
 
 鉴权：`Authorization: Bearer <sk_...>` 或 `X-Api-Key: <sk_...>`。
 

@@ -25,6 +25,7 @@ public final class ConfirmPayloadFactory {
      * @param confirmGate 确认闸门
      * @param tenantId 租户 ID
      * @param taskId 任务 ID
+     * @param conversationId 会话 ID
      * @param replyId AgentScope 回复 ID；echo 模式可为空
      * @param tools 待确认工具列表（name + argsJson）
      * @return confirm 事件 data 字段（JSON 字符串）
@@ -33,12 +34,13 @@ public final class ConfirmPayloadFactory {
             ConfirmGate confirmGate,
             String tenantId,
             String taskId,
+            String conversationId,
             String replyId,
             List<ToolCall> tools) {
         List<Map<String, Object>> calls = new ArrayList<>();
         for (ToolCall tool : tools) {
-            // 落库挂起，后续 approve/deny 才能按 confirmId 放行或拒绝
-            String confirmId = confirmGate.suspend(tenantId, taskId, tool.name(), tool.argsJson());
+            // 落库挂起并带上 conversationId，approve 后才能续跑同一会话
+            String confirmId = confirmGate.suspend(tenantId, taskId, conversationId, tool.name(), tool.argsJson());
             Map<String, Object> call = new LinkedHashMap<>();
             call.put("confirmId", confirmId);
             call.put("name", tool.name());
@@ -47,6 +49,7 @@ public final class ConfirmPayloadFactory {
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("taskId", taskId);
+        payload.put("conversationId", conversationId);
         if (replyId != null && !replyId.isBlank()) {
             payload.put("replyId", replyId);
         }

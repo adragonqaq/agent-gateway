@@ -34,11 +34,12 @@ class ConfirmPayloadFactoryTest {
     @Test
     void suspendAndSerializeContainsConfirmId() {
         String json = ConfirmPayloadFactory.suspendAndSerialize(
-                confirmGate, "tA", "task_1", "reply_1",
+                confirmGate, "tA", "task_1", "conv_1", "reply_1",
                 List.of(new ConfirmPayloadFactory.ToolCall("delete_order", "{\"id\":1}")));
         assertTrue(json.contains("\"confirmId\""));
         assertTrue(json.contains("delete_order"));
         assertTrue(json.contains("task_1"));
+        assertTrue(json.contains("conv_1"));
         assertTrue(json.contains("reply_1"));
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM gw_confirm WHERE tenant_id = ? AND tool_name = ?",

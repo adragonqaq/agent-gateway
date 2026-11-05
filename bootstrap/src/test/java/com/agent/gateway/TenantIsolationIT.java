@@ -65,7 +65,7 @@ class TenantIsolationIT {
         TenantToolCatalog catalog = new TenantToolCatalog(mcpRegistry, new PolicyEngine(jdbc), poolProvider);
         chatService = new AgentChatService(
                 runGate, catalog, stateStore, new EchoAgentExecutor(new CatalogFingerprintTracker(), confirmGate), new CatalogFingerprintTracker(),
-                new AuditService(jdbc), new UsageService(jdbc));
+                new AuditService(jdbc), new UsageService(jdbc), confirmGate);
 
         tenantRepo.insertTenant(new TenantRecord("tA", "A", "ACTIVE", "standard", "platform", 5));
         tenantRepo.insertTenant(new TenantRecord("tB", "B", "ACTIVE", "standard", "platform", 5));
@@ -89,7 +89,7 @@ class TenantIsolationIT {
         mcpRegistry.upsert(new McpServerRecord("s1", "tA", "weather", "http://a", null, "ACTIVE"));
         assertEquals(0, mcpRegistry.listActive("tB").size());
 
-        String confirmId = confirmGate.suspend("tA", "task1", "delete", "{}");
+        String confirmId = confirmGate.suspend("tA", "task1", "conv1", "delete", "{}");
         assertThrows(NotFoundException.class, () -> confirmGate.confirm("tB", confirmId));
     }
 

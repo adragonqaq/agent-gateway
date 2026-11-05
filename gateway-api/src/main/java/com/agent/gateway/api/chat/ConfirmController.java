@@ -1,66 +1,74 @@
 package com.agent.gateway.api.chat;
 
 import com.agent.gateway.api.auth.TenantContextHolder;
-import com.agent.gateway.observe.AuditService;
-import com.agent.gateway.runtime.ConfirmGate;
-import com.agent.gateway.runtime.PendingConfirmation;
+import com.agent.gateway.runtime.chat.AgentChatService;
+import com.agent.gateway.runtime.chat.AgentEvent;
 import com.agent.gateway.tenant.TenantContext;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.Map;
 
 /**
  * 人工确认门禁 API。
- * 对需要确认的工具调用执行批准或拒绝，并写入审计。
+ * 批准或拒绝后立即续跑 Agent，并以 SSE 推送后续事件。
  */
 @RestController
 @RequestMapping("/v1/confirms")
 public class ConfirmController {
 
-    private final ConfirmGate confirmGate;
-    private final AuditService auditService;
+    private final AgentChatService agentChatService;
 
     /**
-     * @param confirmGate 确认门禁
-     * @param auditService 审计服务
+     * @param agentChatService 聊天编排（含确认续跑）
      */
-    public ConfirmController(ConfirmGate confirmGate, AuditService auditService) {
-        this.confirmGate = confirmGate;
-        this.auditService = auditService;
+    public ConfirmController(AgentChatService agentChatService) {
+        this.agentChatService = agentChatService;
     }
 
     /**
-     * 批准待确认的工具调用，使其可以继续执行。
+     * 批准待确认工具并续跑。
      *
      * @param confirmId 确认单 ID
-     * @return 确认单 ID 与最新状态
+     * @return SSE 事件流（含续跑产生的 tool/answer/done 等）
      */
-    @PostMapping("/{confirmId}/approve")
-    public Map<String, Object> approve(@PathVariable String confirmId) {
-        // TenantContextHolder：批准必须绑定租户，防止跨租户放行他人确认单
-        TenantContext tenant = TenantContextHolder.require();
-        // confirm approve：放行门禁中的待确认调用，运行时才会真正执行工具
-        PendingConfirmation result = confirmGate.confirm(tenant.tenantId(), confirmId);
-        auditService.record(tenant.tenantId(), "CONFIRM_APPROVE", confirmId, "{}");
-        return Map.of("id", result.id(), "status", result.status().name());
+    @PostMapping(value = "/{confirmId}/approve", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter approve(@PathVariable String confirmId) throws IOException {
+        return resume(confirmId, true);
     }
 
     /**
-     * 拒绝待确认的工具调用，阻止其执行。
+     * 拒绝待确认工具并续跑（拒绝文案由执行器/框架产出）。
      *
      * @param confirmId 确认单 ID
-     * @return 确认单 ID 与最新状态
+     * @return SSE 事件流
      */
-    @PostMapping("/{confirmId}/deny")
-    public Map<String, Object> deny(@PathVariable String confirmId) {
-        // TenantContextHolder：拒绝同样需租户隔离，避免误拒其他租户确认单
+    @PostMapping(value = "/{confirmId}/deny", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter deny(@PathVariable String confirmId) throws IOException {
+        return resume(confirmId, false);
+    }
+
+    /**
+     * 统一续跑入口：鉴权 → 结算确认单 → 推送 SSE。
+     */
+    private SseEmitter resume(String confirmId, boolean approved) throws IOException {
+        // 必须绑定当前租户，防止跨租户操作他人确认单
         TenantContext tenant = TenantContextHolder.require();
-        // confirm deny：关闭门禁并标记拒绝，运行时不得继续执行该工具调用
-        PendingConfirmation result = confirmGate.deny(tenant.tenantId(), confirmId);
-        auditService.record(tenant.tenantId(), "CONFIRM_DENY", confirmId, "{}");
-        return Map.of("id", result.id(), "status", result.status().name());
+        AgentChatService.ChatRun run = agentChatService.resumeAfterConfirm(tenant, confirmId, approved, 5);
+        SseEmitter emitter = new SseEmitter(60_000L);
+        emitter.send(SseEmitter.event().name("meta").data(Map.of(
+                "taskId", run.taskId(),
+                "confirmId", confirmId,
+                "approved", approved)));
+        for (AgentEvent event : run.events()) {
+            emitter.send(SseEmitter.event().name(event.type()).data(event.data()));
+        }
+        emitter.complete();
+        return emitter;
     }
 }
