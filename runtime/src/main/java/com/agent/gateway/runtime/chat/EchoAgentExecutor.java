@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -41,12 +42,9 @@ public class EchoAgentExecutor implements AgentExecutor {
     public void run(TenantContext tenant, String taskId, String conversationId, String message,
                     ResolvedCatalog catalog, String priorState,
                     Consumer<AgentEvent> events, Consumer<String> stateSaver) {
+        long started = System.nanoTime();
         fingerprintTracker.getOrRebuild(tenant.tenantId(), catalog);
         events.accept(new AgentEvent("thinking", "planning with " + catalog.tools().size() + " tools"));
-        String toolNames = catalog.tools().stream().map(CatalogTool::name).collect(Collectors.joining(","));
-        if (!toolNames.isBlank()) {
-            events.accept(new AgentEvent("tool", toolNames));
-        }
 
         List<ConfirmPayloadFactory.ToolCall> needingConfirm = catalog.tools().stream()
                 .filter(CatalogTool::requireConfirm)
@@ -63,8 +61,18 @@ public class EchoAgentExecutor implements AgentExecutor {
             return;
         }
 
+        // 结构化 tool 事件，便于前端活动条在 echo 模式也可演示
+        List<CatalogTool> available = catalog.tools().stream().filter(CatalogTool::available).toList();
+        int i = 0;
+        for (CatalogTool tool : available) {
+            String id = "echo-" + (++i);
+            events.accept(AgentScopeEventMapper.toolStart(id, tool.name()));
+            events.accept(AgentScopeEventMapper.toolArgs(id, tool.name(), "{}"));
+            events.accept(AgentScopeEventMapper.toolEnd(id, tool.name(), "ok", 1L, "{}"));
+        }
+
         events.accept(new AgentEvent("answer", "echo: " + message));
-        events.accept(new AgentEvent("done", "ok"));
+        events.accept(AgentScopeEventMapper.done("ok", elapsedMs(started)));
         stateSaver.accept("{\"last\":\"" + message.replace("\"", "'") + "\"}");
     }
 
@@ -76,17 +84,28 @@ public class EchoAgentExecutor implements AgentExecutor {
     public void resumeConfirm(TenantContext tenant, String resumeTaskId, List<PendingConfirmation> settled,
                               boolean approved, ResolvedCatalog catalog,
                               Consumer<AgentEvent> events, Consumer<String> stateSaver) {
+        long started = System.nanoTime();
         String tools = settled.stream().map(PendingConfirmation::toolName).collect(Collectors.joining(","));
         if (approved) {
-            events.accept(new AgentEvent("tool", tools));
+            int i = 0;
+            for (PendingConfirmation row : settled) {
+                String id = "echo-resume-" + (++i);
+                events.accept(AgentScopeEventMapper.toolStart(id, row.toolName()));
+                events.accept(AgentScopeEventMapper.toolArgs(id, row.toolName(), row.argsJson()));
+                events.accept(AgentScopeEventMapper.toolEnd(id, row.toolName(), "ok", 1L, row.argsJson()));
+            }
             events.accept(new AgentEvent("answer", "confirmed: " + tools));
         } else {
             events.accept(new AgentEvent("answer", "denied: " + tools));
         }
-        events.accept(new AgentEvent("done", "ok"));
+        events.accept(AgentScopeEventMapper.done("ok", elapsedMs(started)));
         String conv = settled.isEmpty() ? "" : settled.get(0).conversationId();
         stateSaver.accept("{\"lastConfirm\":\"" + (approved ? "approved" : "denied")
                 + "\",\"tools\":\"" + tools.replace("\"", "'") + "\",\"conversationId\":\""
                 + (conv == null ? "" : conv) + "\"}");
+    }
+
+    private static long elapsedMs(long startedNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
     }
 }

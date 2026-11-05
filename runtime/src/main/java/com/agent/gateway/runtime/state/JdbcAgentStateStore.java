@@ -66,6 +66,10 @@ public class JdbcAgentStateStore implements AgentStateStore {
 
     @Override
     public boolean exists(String userId, String sessionId) {
+        // AgentScope 构建期可能用空 userId 探测默认槽位；读路径放行为空
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
         String tid = TenantIds.require(userId);
         Integer n = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM gw_agentscope_state
@@ -92,6 +96,9 @@ public class JdbcAgentStateStore implements AgentStateStore {
 
     @Override
     public Set<String> listSessionIds(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return Set.of();
+        }
         String tid = TenantIds.require(userId);
         return new LinkedHashSet<>(jdbc.queryForList("""
                 SELECT DISTINCT conversation_id FROM gw_agentscope_state WHERE tenant_id = ?
@@ -113,6 +120,10 @@ public class JdbcAgentStateStore implements AgentStateStore {
     }
 
     private String queryPayload(String userId, String sessionId, String key) {
+        // 构建 ReActAgent 时框架会以 (null, agentName) 探测状态；不能抛 MissingTenantException
+        if (userId == null || userId.isBlank()) {
+            return null;
+        }
         String tid = TenantIds.require(userId);
         List<String> rows = jdbc.query("""
                 SELECT payload FROM gw_agentscope_state

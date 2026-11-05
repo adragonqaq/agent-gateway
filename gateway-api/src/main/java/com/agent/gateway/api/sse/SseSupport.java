@@ -1,5 +1,7 @@
 package com.agent.gateway.api.sse;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -10,11 +12,16 @@ import java.io.IOException;
  */
 public final class SseSupport {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     private SseSupport() {
     }
 
     /**
      * 向发射器写入命名事件；发送失败时完成并带上错误。
+     * <p>字符串先 {@code ObjectMapper.writeValueAsString} 再写出（线上为
+     * {@code data:" world"}），避免 SSE 剥掉 {@code data:} 后首个空格导致英文丢空格。
+     * Spring 的 {@code MediaType.APPLICATION_JSON} 对纯 String 在部分版本仍会写成裸文本，不可靠。
      *
      * @param emitter SSE 发射器
      * @param lock 与该 emitter 绑定的互斥锁
@@ -24,7 +31,15 @@ public final class SseSupport {
     public static void send(SseEmitter emitter, Object lock, String name, Object data) {
         synchronized (lock) {
             try {
-                emitter.send(SseEmitter.event().name(name).data(data));
+                Object payload = data;
+                if (data instanceof String text) {
+                    try {
+                        payload = JSON.writeValueAsString(text);
+                    } catch (JsonProcessingException ex) {
+                        payload = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+                    }
+                }
+                emitter.send(SseEmitter.event().name(name).data(payload));
             } catch (IOException ex) {
                 emitter.completeWithError(ex);
             }

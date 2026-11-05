@@ -11,6 +11,9 @@ spring:
   application:
     # 应用名（日志 / Actuator 识别）
     name: agent-gateway
+  profiles:
+    # 本地默认走 docker-compose（Postgres 15432 / Redis 16379）；生产用环境变量覆盖
+    active: ${SPRING_PROFILES_ACTIVE:docker}
   datasource:
     # Postgres 连接；本地可用 docker compose 起库
     url: jdbc:postgresql://localhost:5432/agent_gateway

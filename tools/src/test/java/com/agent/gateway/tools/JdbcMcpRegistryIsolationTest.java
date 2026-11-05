@@ -37,4 +37,15 @@ class JdbcMcpRegistryIsolationTest {
         assertEquals(1, registry.listActive("tA").size());
         assertEquals("weather", registry.listActive("tA").get(0).name());
     }
+
+    @Test
+    void sameServerIdCanExistOnDifferentTenants() {
+        // 复合主键 (tenant_id, id)：多租户可共用逻辑 id，如 demo-mcp
+        registry.upsert(new McpServerRecord("demo-mcp", "tA", "demo-mcp", "http://a/mcp", null, "ACTIVE"));
+        registry.upsert(new McpServerRecord("demo-mcp", "tB", "demo-mcp", "http://b/mcp", null, "ACTIVE"));
+        assertEquals(1, registry.listActive("tA").size());
+        assertEquals(1, registry.listActive("tB").size());
+        assertEquals("http://a/mcp", registry.find("tA", "demo-mcp").orElseThrow().transportUrl());
+        assertEquals("http://b/mcp", registry.find("tB", "demo-mcp").orElseThrow().transportUrl());
+    }
 }

@@ -8,6 +8,7 @@ import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.event.RequireUserConfirmEvent;
+import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.ToolCallState;
@@ -20,7 +21,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -60,9 +63,12 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
                 .sessionId(conversationId)
                 .build();
 
+        long runStartedAt = System.nanoTime();
         StringJoiner answer = new StringJoiner("");
         AtomicReference<Throwable> error = new AtomicReference<>();
         AtomicReference<Boolean> awaitingConfirm = new AtomicReference<>(false);
+        AtomicReference<Boolean> textDeltaEmitted = new AtomicReference<>(false);
+        ToolCallTracker toolTracker = new ToolCallTracker();
         try {
             agent.streamEvents(message, runtimeContext)
                     .doOnNext(scopeEvent -> {
@@ -72,12 +78,22 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
                             awaitingConfirm.set(true);
                             return;
                         }
-                        AgentScopeEventMapper.map(scopeEvent).ifPresent(mapped -> {
-                            events.accept(mapped);
-                            if ("answer".equals(mapped.type())) {
-                                answer.add(mapped.data());
-                            }
-                        });
+                        if (scopeEvent instanceof TextBlockDeltaEvent) {
+                            textDeltaEmitted.set(true);
+                        }
+                        Optional<AgentEvent> toolEvent = toolTracker.handle(scopeEvent);
+                        if (toolEvent.isPresent()) {
+                            events.accept(toolEvent.get());
+                            return;
+                        }
+                        // 已有 delta 时跳过 AgentResult 全文，避免 SSE answer 重复拼接
+                        AgentScopeEventMapper.map(scopeEvent, Boolean.TRUE.equals(textDeltaEmitted.get()))
+                                .ifPresent(mapped -> {
+                                    events.accept(mapped);
+                                    if ("answer".equals(mapped.type())) {
+                                        answer.add(mapped.data());
+                                    }
+                                });
                     })
                     .doOnError(error::set)
                     .blockLast(Duration.ofMinutes(5));
@@ -85,6 +101,7 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
             error.set(ex);
         }
 
+        long elapsedMs = elapsedMs(runStartedAt);
         if (error.get() != null) {
             // 取消/失败也尽量落盘，下一轮 enablePendingToolRecovery 才能收口挂起工具
             try {
@@ -94,7 +111,7 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
             stateSaver.accept("{\"interrupted\":true,\"prior\":"
                     + (priorState == null ? "\"\"" : priorState) + "}");
             events.accept(new AgentEvent("error", error.get().getMessage() == null ? "error" : error.get().getMessage()));
-            events.accept(new AgentEvent("done", "error"));
+            events.accept(AgentScopeEventMapper.done("error", elapsedMs));
             throw new IllegalStateException("AgentScope run failed", error.get());
         }
 
@@ -110,7 +127,7 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
             return;
         }
 
-        events.accept(new AgentEvent("done", "ok"));
+        events.accept(AgentScopeEventMapper.done("ok", elapsedMs));
         String payload = "{\"last\":\"" + escape(answer.toString()) + "\",\"prior\":"
                 + (priorState == null ? "\"\"" : priorState) + "}";
         stateSaver.accept(payload);
@@ -158,9 +175,12 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
                 .sessionId(conversationId)
                 .build();
 
+        long runStartedAt = System.nanoTime();
         StringJoiner answer = new StringJoiner("");
         AtomicReference<Throwable> error = new AtomicReference<>();
         AtomicReference<Boolean> awaitingConfirm = new AtomicReference<>(false);
+        AtomicReference<Boolean> textDeltaEmitted = new AtomicReference<>(false);
+        ToolCallTracker toolTracker = new ToolCallTracker();
         try {
             // 空正文 + 确认结果元数据，框架会恢复挂起的工具调用
             agent.streamEvents(List.of(resumeMsg), runtimeContext)
@@ -170,12 +190,21 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
                             awaitingConfirm.set(true);
                             return;
                         }
-                        AgentScopeEventMapper.map(scopeEvent).ifPresent(mapped -> {
-                            events.accept(mapped);
-                            if ("answer".equals(mapped.type())) {
-                                answer.add(mapped.data());
-                            }
-                        });
+                        if (scopeEvent instanceof TextBlockDeltaEvent) {
+                            textDeltaEmitted.set(true);
+                        }
+                        Optional<AgentEvent> toolEvent = toolTracker.handle(scopeEvent);
+                        if (toolEvent.isPresent()) {
+                            events.accept(toolEvent.get());
+                            return;
+                        }
+                        AgentScopeEventMapper.map(scopeEvent, Boolean.TRUE.equals(textDeltaEmitted.get()))
+                                .ifPresent(mapped -> {
+                                    events.accept(mapped);
+                                    if ("answer".equals(mapped.type())) {
+                                        answer.add(mapped.data());
+                                    }
+                                });
                     })
                     .doOnError(error::set)
                     .blockLast(Duration.ofMinutes(5));
@@ -183,9 +212,10 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
             error.set(ex);
         }
 
+        long elapsedMs = elapsedMs(runStartedAt);
         if (error.get() != null) {
             events.accept(new AgentEvent("error", error.get().getMessage()));
-            events.accept(new AgentEvent("done", "error"));
+            events.accept(AgentScopeEventMapper.done("error", elapsedMs));
             throw new IllegalStateException("AgentScope resume failed", error.get());
         }
         if (Boolean.TRUE.equals(awaitingConfirm.get())) {
@@ -195,7 +225,7 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
             }
             return;
         }
-        events.accept(new AgentEvent("done", "ok"));
+        events.accept(AgentScopeEventMapper.done("ok", elapsedMs));
         stateSaver.accept("{\"last\":\"" + escape(answer.toString()) + "\",\"resumed\":true}");
         try {
             agent.saveAgentState(tenant.tenantId(), conversationId);
@@ -268,6 +298,10 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
                 // 取消路径不能因 interrupt 异常而失败，闸门仍需释放
             }
         });
+    }
+
+    private static long elapsedMs(long startedNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
     }
 
     private static String escape(String raw) {

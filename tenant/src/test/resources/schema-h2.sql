@@ -53,13 +53,14 @@ COMMENT ON COLUMN gw_api_key.created_at IS '创建时间';
 -- MCP Server 注册：每租户可挂多个远端 MCP；Header 密文存储
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS gw_mcp_server (
-    id              VARCHAR(64) PRIMARY KEY,
+    id              VARCHAR(64) NOT NULL,
     tenant_id       VARCHAR(64) NOT NULL,
     name            VARCHAR(128) NOT NULL,
     transport_url   VARCHAR(512) NOT NULL,
     headers_cipher  TEXT,
     status          VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, id),
     CONSTRAINT fk_gw_mcp_tenant FOREIGN KEY (tenant_id) REFERENCES gw_tenant(id)
 );
 CREATE INDEX IF NOT EXISTS idx_gw_mcp_tenant ON gw_mcp_server(tenant_id);

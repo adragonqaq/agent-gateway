@@ -41,8 +41,11 @@ public class ConfirmExpiryScheduler {
 
     /**
      * 周期扫描并过期到期确认单。
+     * <p>{@code initialDelay} 给 schema / bootstrap 留出窗口，避免冷启动首扫撞上未建表。
      */
-    @Scheduled(fixedDelayString = "${gateway.confirm.sweep-interval-ms:30000}")
+    @Scheduled(
+            fixedDelayString = "${gateway.confirm.sweep-interval-ms:30000}",
+            initialDelayString = "${gateway.confirm.sweep-initial-delay-ms:5000}")
     public void sweepExpired() {
         List<PendingConfirmation> expired = confirmGate.expireDue(properties.getSweepBatchSize());
         for (PendingConfirmation item : expired) {
