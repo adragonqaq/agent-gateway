@@ -37,7 +37,8 @@
 ```bash
 cd /path/to/agent-gateway
 docker compose up -d
-# 起 Postgres(5432) + Redis(6379)；MVP 默认 RunGate 为内存，Redis 可选
+# 起 Postgres(15432) + Redis(16379)，避开本机常见 5432/6379 占用
+# 也可用 profile：--spring.profiles.active=docker
 ```
 
 ### 2. 环境变量
@@ -45,11 +46,12 @@ docker compose up -d
 ```bash
 export GATEWAY_SECRET_MASTER_KEY=0123456789abcdef   # MCP Header 加密主密钥（≥16 字节）
 export GATEWAY_ADMIN_API_KEY=sk_admin_local_dev     # 可选：启动种子 ADMIN Key
-# 真实模型（可选）：
+# 真实模型（可选，OpenAI 兼容；示例 DeepSeek）：
 # export GATEWAY_AGENT_MODE=agentscope
 # export GATEWAY_LLM_API_KEY=sk-...
-# export GATEWAY_LLM_BASE_URL=https://api.openai.com
-# export GATEWAY_LLM_MODEL=gpt-4o-mini
+# export GATEWAY_LLM_BASE_URL=https://api.deepseek.com
+# export GATEWAY_LLM_MODEL=deepseek-chat
+# export GATEWAY_LLM_ENDPOINT=/v1/chat/completions
 # 多实例并发闸（可选）：
 # export GATEWAY_RUN_GATE_TYPE=redis
 # export GATEWAY_REDIS_ADDRESS=redis://127.0.0.1:6379

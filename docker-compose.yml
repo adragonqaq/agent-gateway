@@ -5,7 +5,9 @@ services:
       POSTGRES_DB: agent_gateway
       POSTGRES_USER: gateway
       POSTGRES_PASSWORD: gateway
-    ports: ["5432:5432"]
+    # 避开本机已占用的 5432（如 pgvector）
+    ports: ["15432:5432"]
   redis:
     image: redis:7
-    ports: ["6379:6379"]
+    # 避开本机已占用的 6379
+    ports: ["16379:6379"]

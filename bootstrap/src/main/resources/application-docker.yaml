@@ -1,0 +1,22 @@
+# 配合 docker-compose（Postgres 15432 / Redis 16379）
+# 用法见 README；LLM Key 请用环境变量注入，勿写入本文件。
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:15432/agent_gateway
+    username: gateway
+    password: gateway
+
+gateway:
+  run-gate:
+    type: ${GATEWAY_RUN_GATE_TYPE:memory}
+    redis-address: ${GATEWAY_REDIS_ADDRESS:redis://127.0.0.1:16379}
+  bootstrap:
+    admin-api-key: ${GATEWAY_ADMIN_API_KEY:sk_admin_local_dev}
+  agent:
+    mode: ${GATEWAY_AGENT_MODE:echo}
+    state-store: jdbc
+    chat:
+      api-key: ${GATEWAY_LLM_API_KEY:}
+      base-url: ${GATEWAY_LLM_BASE_URL:https://api.deepseek.com}
+      endpoint-path: ${GATEWAY_LLM_ENDPOINT:/v1/chat/completions}
+      model: ${GATEWAY_LLM_MODEL:deepseek-chat}
