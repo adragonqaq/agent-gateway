@@ -4,6 +4,8 @@ import com.agent.gateway.tenant.TenantIds;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -53,5 +55,25 @@ public class AuditService {
                 "SELECT COUNT(*) FROM gw_audit_event WHERE tenant_id = ?",
                 Integer.class, TenantIds.require(tenantId));
         return n == null ? 0 : n;
+    }
+
+    /**
+     * 列出本租户最近审计事件（新→旧）。
+     *
+     * @param tenantId 租户 ID
+     * @param limit 最大条数（上限 200）
+     * @return 事件摘要列表；不含其他租户数据
+     */
+    public List<Map<String, Object>> listRecent(String tenantId, int limit) {
+        String tid = TenantIds.require(tenantId);
+        int n = Math.max(1, Math.min(limit, 200));
+        // 强制 tenant_id 谓词，查询 API 也不能跨租户读
+        return jdbc.queryForList("""
+                SELECT id, event_type, ref_id, detail_json, created_at
+                FROM gw_audit_event
+                WHERE tenant_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """, tid, n);
     }
 }

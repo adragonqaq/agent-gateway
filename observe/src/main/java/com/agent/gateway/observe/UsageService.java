@@ -4,6 +4,8 @@ import com.agent.gateway.tenant.TenantIds;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -54,5 +56,22 @@ public class UsageService {
                 "SELECT COALESCE(SUM(amount),0) FROM gw_usage_event WHERE tenant_id = ? AND metric = ?",
                 Long.class, TenantIds.require(tenantId), metric);
         return n == null ? 0L : n;
+    }
+
+    /**
+     * 按指标汇总本租户用量。
+     *
+     * @param tenantId 租户 ID
+     * @return 每行含 metric、total；仅本租户
+     */
+    public List<Map<String, Object>> summarizeForTenant(String tenantId) {
+        String tid = TenantIds.require(tenantId);
+        return jdbc.queryForList("""
+                SELECT metric, COALESCE(SUM(amount),0) AS total
+                FROM gw_usage_event
+                WHERE tenant_id = ?
+                GROUP BY metric
+                ORDER BY metric
+                """, tid);
     }
 }

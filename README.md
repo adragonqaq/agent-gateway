@@ -88,6 +88,13 @@ curl -N -X POST http://localhost:8080/v1/chat \
 
 启动后打开：http://localhost:8080/swagger-ui.html
 
+观测查询（需 RUNTIME/ADMIN Key）：
+
+```bash
+curl -s http://localhost:8080/v1/observe/audit?limit=20 -H "Authorization: Bearer <apiKey>"
+curl -s http://localhost:8080/v1/observe/usage -H "Authorization: Bearer <apiKey>"
+```
+
 ### 6. 验证测试
 
 ```bash
