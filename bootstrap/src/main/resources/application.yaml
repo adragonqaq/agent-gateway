@@ -1,40 +1,63 @@
+# =============================================================================
+# Agent Gateway 主配置
+# 敏感项请用环境变量覆盖，勿把生产密钥提交进仓库。
+# =============================================================================
+
 server:
+  # HTTP 监听端口
   port: 8080
 
 spring:
   application:
+    # 应用名（日志 / Actuator 识别）
     name: agent-gateway
   datasource:
+    # Postgres 连接；本地可用 docker compose 起库
     url: jdbc:postgresql://localhost:5432/agent_gateway
     username: gateway
     password: gateway
   autoconfigure:
     exclude:
+      # 默认不用 Spring Data Redis；RunGate=redis 时由 Redisson 自行建连
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
 
 gateway:
   agent:
+    # 执行模式：echo=离线桩；agentscope=真实 ReAct + 大模型
     mode: ${GATEWAY_AGENT_MODE:echo}
+    # 系统人设提示词
     persona: You are Agent Gateway, a helpful multi-tenant tool-using assistant.
+    # ReAct 最大迭代轮数
     max-iters: 8
+    # 模型调用失败重试次数（建议保持较小，避免流式重复输出）
     max-retries: 2
     chat:
+      # OpenAI 兼容 API Key（agentscope 模式必填）
       api-key: ${GATEWAY_LLM_API_KEY:}
+      # 模型服务根地址
       base-url: ${GATEWAY_LLM_BASE_URL:https://api.openai.com}
+      # Chat Completions 路径
       endpoint-path: ${GATEWAY_LLM_ENDPOINT:/v1/chat/completions}
+      # 模型名
       model: ${GATEWAY_LLM_MODEL:gpt-4o-mini}
+      # 是否请求上游流式（AgentScope 侧）
       stream: true
   secret:
+    # AES-GCM 主密钥（至少 16 字节）；加密 MCP Header 用
     master-key: ${GATEWAY_SECRET_MASTER_KEY:0123456789abcdef}
   run-gate:
-    type: ${GATEWAY_RUN_GATE_TYPE:memory}   # memory | redis
+    # 并发闸门实现：memory（单实例）| redis（多实例共享）
+    type: ${GATEWAY_RUN_GATE_TYPE:memory}
+    # Redis 地址（type=redis 时生效）
     redis-address: ${GATEWAY_REDIS_ADDRESS:redis://127.0.0.1:6379}
+    # 每租户默认最大并发（也可由租户表 max_concurrent 覆盖业务侧）
     max-concurrent-per-tenant: 5
   confirm:
+    # 确认单默认超时秒数；超时后惰性标记 EXPIRED
     timeout-seconds: 300
-
   bootstrap:
+    # 非空则启动时种子平台 ADMIN Key（明文来自该环境变量）
     admin-api-key: ${GATEWAY_ADMIN_API_KEY:}
+    # 种子租户名称
     admin-tenant-name: ${GATEWAY_ADMIN_TENANT_NAME:platform}
-

@@ -8,12 +8,15 @@
         <artifactId>agent-gateway</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
+    <!-- 唯一可执行模块：装配全部子模块并启动 Spring Boot -->
     <artifactId>bootstrap</artifactId>
     <dependencies>
+        <!-- 拉齐 gateway-api 及向下全部传递依赖 -->
         <dependency>
             <groupId>com.agent</groupId>
             <artifactId>gateway-api</artifactId>
         </dependency>
+        <!-- 生产 Postgres 驱动 -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
@@ -24,7 +27,7 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-    
+        <!-- 隔离 IT 用内存库 -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
@@ -33,6 +36,7 @@
     </dependencies>
     <build>
         <plugins>
+            <!-- 打可执行 fat jar：java -jar bootstrap/target/*.jar -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

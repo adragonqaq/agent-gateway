@@ -8,12 +8,15 @@
         <artifactId>agent-gateway</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
+    <!-- HTTP / SSE 控制器与鉴权过滤器 -->
     <artifactId>gateway-api</artifactId>
     <dependencies>
+        <!-- 编排服务、确认续跑、执行器 -->
         <dependency>
             <groupId>com.agent</groupId>
             <artifactId>runtime</artifactId>
         </dependency>
+        <!-- Servlet Web + SseEmitter -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
