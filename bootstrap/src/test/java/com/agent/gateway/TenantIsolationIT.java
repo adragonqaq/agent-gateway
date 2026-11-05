@@ -64,7 +64,7 @@ class TenantIsolationIT {
         org.mockito.Mockito.when(poolProvider.getIfAvailable()).thenReturn(null);
         TenantToolCatalog catalog = new TenantToolCatalog(mcpRegistry, new PolicyEngine(jdbc), poolProvider);
         chatService = new AgentChatService(
-                runGate, catalog, stateStore, new EchoAgentExecutor(new CatalogFingerprintTracker()), new CatalogFingerprintTracker(),
+                runGate, catalog, stateStore, new EchoAgentExecutor(new CatalogFingerprintTracker(), confirmGate), new CatalogFingerprintTracker(),
                 new AuditService(jdbc), new UsageService(jdbc));
 
         tenantRepo.insertTenant(new TenantRecord("tA", "A", "ACTIVE", "standard", "platform", 5));

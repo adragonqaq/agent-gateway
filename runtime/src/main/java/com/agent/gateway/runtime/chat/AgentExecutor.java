@@ -3,7 +3,6 @@ package com.agent.gateway.runtime.chat;
 import com.agent.gateway.tenant.TenantContext;
 import com.agent.gateway.tools.ResolvedCatalog;
 
-import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -16,6 +15,7 @@ public interface AgentExecutor {
      * 执行一轮对话，并把事件与会话快照回写给调用方。
      *
      * @param tenant 租户上下文
+     * @param taskId 本轮任务 ID，用于 ConfirmGate 关联
      * @param conversationId 会话 ID
      * @param message 用户消息
      * @param catalog 已解析的工具目录
@@ -23,7 +23,7 @@ public interface AgentExecutor {
      * @param events 事件消费者
      * @param stateSaver 会话状态保存回调
      */
-    void run(TenantContext tenant, String conversationId, String message,
+    void run(TenantContext tenant, String taskId, String conversationId, String message,
              ResolvedCatalog catalog, String priorState,
              Consumer<AgentEvent> events, Consumer<String> stateSaver);
 }

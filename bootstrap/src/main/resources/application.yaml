@@ -31,3 +31,8 @@ gateway:
     max-concurrent-per-tenant: 5
   confirm:
     timeout-seconds: 300
+
+  bootstrap:
+    admin-api-key: ${GATEWAY_ADMIN_API_KEY:}
+    admin-tenant-name: ${GATEWAY_ADMIN_TENANT_NAME:platform}
+

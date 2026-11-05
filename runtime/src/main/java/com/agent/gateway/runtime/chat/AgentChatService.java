@@ -84,7 +84,8 @@ public class AgentChatService {
         String prior = stateStore.load(tenant.tenantId(), conversationId).orElse("{}");
         List<AgentEvent> buffer = new ArrayList<>();
         try {
-            agentExecutor.run(tenant, conversationId, message, catalog, prior, buffer::add, payload ->
+            // 传入 taskId，执行器挂起确认单时才能与 /v1/confirms 对齐
+            agentExecutor.run(tenant, taskId, conversationId, message, catalog, prior, buffer::add, payload ->
                     stateStore.save(tenant.tenantId(), conversationId, payload));
             // 仅整轮成功才记用量与完成审计；执行器抛错会跳过这两步
             usageService.record(tenant.tenantId(), taskId, "runs", 1);

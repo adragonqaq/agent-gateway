@@ -98,6 +98,7 @@
 ```bash
 docker compose up -d          # Postgres（Redis 可选；MVP RunGate 为内存实现）
 export GATEWAY_SECRET_MASTER_KEY=0123456789abcdef
+export GATEWAY_ADMIN_API_KEY=sk_admin_local_dev   # 可选：种子平台 ADMIN Key
 mvn -pl bootstrap -am spring-boot:run
 ```
 
@@ -129,9 +130,17 @@ export GATEWAY_LLM_MODEL=gpt-4o-mini
 | `POST /admin/tenants/{id}/tool-policies` | 写入工具 ALLOW/DENY 与是否需确认 |
 | `POST /v1/chat` | SSE 对话（`thinking` / `tool` / `confirm` / `answer` / `done`） |
 | `POST /v1/runs/{taskId}/cancel` | 取消任务（跨租户返回 404） |
-| `POST /v1/confirms/{id}/approve\|deny` | 人工确认 / 拒绝 |
+| `POST /v1/confirms/{id}/approve\|deny` | 人工确认 / 拒绝（`id` 来自 SSE `confirm` 事件的 `confirmId`） |
 
 鉴权：`Authorization: Bearer <sk_...>` 或 `X-Api-Key: <sk_...>`。
+
+SSE `confirm` 事件 `data` 为 JSON，例如：
+
+```json
+{"taskId":"task_xxx","replyId":"optional","calls":[{"confirmId":"cfm_xxx","name":"delete_order","argsJson":"{}"}]}
+```
+
+客户端拿到 `confirmId` 后调用 approve/deny；echo 模式下对 `requireConfirm=true` 的目录工具也会发出该事件。
 
 ---
 
