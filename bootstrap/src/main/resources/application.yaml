@@ -14,8 +14,10 @@ spring:
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
 
 gateway:
+  agent:
+    mode: echo
   secret:
-    master-key: ${GATEWAY_SECRET_MASTER_KEY:}
+    master-key: ${GATEWAY_SECRET_MASTER_KEY:0123456789abcdef}
   run-gate:
     max-concurrent-per-tenant: 5
   confirm:
