@@ -37,7 +37,7 @@
 ```bash
 cd /path/to/agent-gateway
 docker compose up -d
-# 起 Postgres(15432) + Redis(16379)，避开本机常见 5432/6379 占用
+# 起 Postgres(15432) + Redis(16379) + 演示 MCP(19099)
 # 也可用 profile：--spring.profiles.active=docker
 ```
 
@@ -60,7 +60,9 @@ export GATEWAY_ADMIN_API_KEY=sk_admin_local_dev     # 可选：启动种子 ADMI
 ### 3. 启动
 
 ```bash
-mvn -pl bootstrap -am spring-boot:run -Dspring-boot.run.mainClass=com.agent.gateway.GatewayApplication
+# 首次或依赖变更后先 install，再只对 bootstrap 跑 spring-boot（勿对父工程加 -am run）
+mvn -DskipTests install
+mvn -pl bootstrap spring-boot:run -Dspring-boot.run.profiles=docker
 # 默认 http://localhost:8080
 ```
 
@@ -113,7 +115,35 @@ mvn test
 # mvn -pl bootstrap -am spring-boot:run -Dspring-boot.run.profiles=h2 -Dspring-boot.run.mainClass=com.agent.gateway.GatewayApplication
 ```
 
-### 8. 生产提示
+### 8. 演示 MCP Server（真实工具联调）
+
+仓库内置独立模块 `mcp-server`（streamable HTTP，默认 `http://127.0.0.1:19099/mcp`），提供：
+
+| 工具 | 读写 | 用途 |
+|---|---|---|
+| `demo_ping` | 读 | 连通性 |
+| `demo_weather` | 读 | 假天气（上海/北京/东京有固定文案） |
+| `demo_ticket_submit` | 写 | 内存工单；会触发 ConfirmGate |
+
+```bash
+# 方式 A：compose 已包含 mcp-server 服务（推荐）
+docker compose up -d --build mcp-server
+
+# 方式 B：本机进程（勿加 -am，否则会在父 pom 上误跑 spring-boot:run）
+mvn -pl mcp-server spring-boot:run
+
+# gateway 已启动后登记（替换 tenantId），或一键冒烟：
+TENANT_ID=<tenantId> ./scripts/register-demo-mcp.sh
+# 完整 MCP 冒烟（agentscope + LLM 时会打天气/工单确认）：
+# GATEWAY_AGENT_MODE=agentscope ./scripts/smoke-mcp.sh
+
+# 对话示例（agentscope + 真实 LLM）：
+# 「上海天气怎么样」→ demo_weather（只读，默认免确认）
+# 「直接调用 demo_ticket_submit，title=打印机坏了」→ event:confirm
+# 批准：POST /v1/confirms/{confirmId}/approve
+```
+
+### 9. 生产提示
 
 - 关闭 Swagger：`springdoc.api-docs.enabled=false`
 - 更换默认 `GATEWAY_SECRET_MASTER_KEY` / `GATEWAY_ADMIN_API_KEY`
@@ -135,6 +165,7 @@ mvn test
 | 运行时 | `runtime` | ReAct 编排、ConfirmGate、RunGate、事件映射 |
 | 领域支撑 | `tenant` / `tools` / `memory` / `observe` | 身份策略、MCP 目录、会话状态、审计用量 |
 | 启动装配 | `bootstrap` | Spring Boot 入口、Schema 初始化、ADMIN 种子 |
+| 演示 MCP | `mcp-server` | 独立进程；streamable HTTP `/mcp`，供登记联调 |
 | 基础设施 | Postgres / Redis(可选) | 持久化；多实例并发闸 |
 
 依赖方向（禁止反向依赖）：
@@ -142,6 +173,7 @@ mvn test
 ```text
 bootstrap → gateway-api → runtime → (tools | memory | observe | tenant)
 tools / memory / observe → tenant
+mcp-server（独立进程，不依赖 gateway 模块）
 ```
 
 ### 主链路（一次对话）
@@ -157,6 +189,23 @@ Client
   → SessionStateStore + Audit/Usage
   → RunGate.release
 ```
+
+### 设计模式（本仓库实际用法）
+
+| 模式 | 落点 | 作用 | 好处 | 后续如何扩展 |
+|---|---|---|---|---|
+| **分层 / 模块化** | Maven 多模块 + 单向依赖 | 把接入、运行时、租户/工具/记忆/观测拆开 | 边界清晰，改一处不易拖垮全局 | 新能力先落对应层；禁止 `tools` 反向依赖 `gateway-api` |
+| **策略模式 Strategy** | `AgentExecutor`（`Echo` / `AgentScope`）；`RunGate`（`InMemory` / `Redis`） | 同一编排点可替换执行引擎或并发闸实现 | 本地 echo 与生产 agentscope、单机与多实例可切换 | 新增 `AgentExecutor` / `RunGate` 实现 + Spring 条件装配，不必改 `AgentChatService` 主流程 |
+| **工厂模式 Factory** | `CatalogToolkitFactory` | 把目录 + 远端 MCP 工具装配成 AgentScope `Toolkit` | 注册规则集中，降级 stub / Confirm 工具统一入口 | 新工具形态（本地 Function、HTTP）在工厂内分支注册即可 |
+| **注册表 Registry** | `McpRegistry` / `JdbcMcpRegistry`；`ActiveRunRegistry` | 持久化或内存登记「有哪些 MCP / 哪些在跑任务」 | 发现与取消有单一事实来源 | MCP 可加版本/健康字段；ActiveRun 可换分布式登记 |
+| **对象池 / 连接缓存** | `TenantMcpClientPool` | 按租户缓存已 initialize 的 MCP 客户端 | 避免每轮对话重复握手 | 配变更时 `invalidate`；可加 TTL / 最大连接数 |
+| **门禁 Gate** | `ConfirmGate`、`RunGate` | 写工具人工确认；租户并发限流 | 危险操作可审计可驳回；保护上游 LLM 配额 | Confirm 可接外部审批流；RunGate 可按 model_tier 差异化限额 |
+| **过滤器 Filter + Context** | `ApiKeyAuthFilter` + `TenantContextHolder` | 请求入口鉴权并绑定租户线程上下文 | 下游无感获租户；强制 finally 清理防泄漏 | 可加 mTLS / OIDC，仍只写入同一 `TenantContext` |
+| **仓储 / 端口思想** | `SessionStateStore`、`AgentStateStore` 等接口 + JDBC 实现 | 状态读写与存储引擎解耦 | 单测可换内存实现；生产用 JDBC | 加 Redis / 对象存储实现时只换 Bean |
+| **装饰 / 包装** | `ConfirmingMcpTool`、`UnavailableCatalogTool` | 在真实 MCP 调用外包确认或降级错误 | 模型仍「看见」工具，行为由网关接管 | 可再包限流、重试、审计装饰器 |
+| **模板方法式编排** | `AgentChatService` 主流程 | 抢闸 → 解析目录 → 执行 → 确认/取消 → 释放 | 横切关注点顺序固定 | 新步骤（配额预检、轨迹落盘）插到编排点，勿散落到 Controller |
+
+确认策略补充：无 `tool-policies` 时按 MCP `readOnlyHint` 推导——只读默认免确认，写工具默认进 `ConfirmGate`；策略表可强制覆盖。
 
 ---
 
@@ -276,13 +325,18 @@ SSE `confirm` 事件示例：
 
 ## 开发规范（强制）
 
-Cursor Rule：[`.cursor/rules/java-comment-standards.mdc`](.cursor/rules/java-comment-standards.mdc)
+Cursor Rules（不满足视为未完成）：
 
-- 每个类、每个方法必须有**中文** Javadoc
-- 关键调用行必须写「为什么调用」的中文注释
-- POM 依赖、配置项、库表字段均应有说明备注
+| Rule | 约束 |
+|---|---|
+| [`.cursor/rules/java-comment-standards.mdc`](.cursor/rules/java-comment-standards.mdc) | 类/方法中文 Javadoc；关键调用行写「为什么」 |
+| [`.cursor/rules/config-comment-standards.mdc`](.cursor/rules/config-comment-standards.mdc) | YAML/Properties **每个配置键**必须有中文注释 |
+| [`.cursor/rules/db-comment-standards.mdc`](.cursor/rules/db-comment-standards.mdc) | SQL 必须 `COMMENT ON TABLE` + 每个字段 `COMMENT ON COLUMN` |
 
-不满足注释规范的改动，视为未完成。
+补充：
+
+- 行尾 `--` 备注**不能**代替 `COMMENT ON`（库表元数据以 `COMMENT ON` 为准）
+- 敏感配置只通过环境变量注入，禁止把生产密钥写入仓库
 
 ---
 

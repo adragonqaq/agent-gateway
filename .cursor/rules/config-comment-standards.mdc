@@ -1,0 +1,45 @@
+---
+description: 强制配置文件注释——YAML/Properties 每个配置项必须有中文说明
+globs: "**/*.{yml,yaml,properties}"
+alwaysApply: true
+---
+
+# 配置文件注释强制规范（不可跳过）
+
+适用于本仓库全部 `*.yml` / `*.yaml` / `*.properties`（含 `application*.yaml`、compose、本地覆盖配置）。
+
+## 硬性要求
+
+1. **文件头**必须有中文块注释：文件用途、适用环境、敏感项如何注入（环境变量优先）。
+2. **每个配置键**（含嵌套叶子键）上方或同行必须有中文注释，说明：含义、默认值语义、何时需要改。
+3. **禁止**无注释的「裸配置块」；新增配置项时注释与键同 PR 提交。
+4. 密钥、Token、密码等敏感值：**不得**写死生产真值；注释中写清对应环境变量名。
+5. Profile 覆盖文件（如 `application-docker.yaml`）也要逐项注释，不能只靠主文件。
+
+## 正确示例
+
+```yaml
+# Agent Gateway 主配置；敏感项用环境变量覆盖。
+gateway:
+  agent:
+    # 执行模式：echo=离线桩；agentscope=真实 ReAct
+    mode: ${GATEWAY_AGENT_MODE:echo}
+  secret:
+    # AES-GCM 主密钥（≥16 字节）；加密 MCP Header
+    master-key: ${GATEWAY_SECRET_MASTER_KEY:}
+```
+
+## 错误示例（禁止）
+
+```yaml
+gateway:
+  agent:
+    mode: echo
+    max-iters: 8
+```
+
+## 自检清单
+
+- [ ] 文件头说明了用途与环境
+- [ ] 每个叶子配置键都有中文注释
+- [ ] 敏感项指向环境变量，无生产密钥入库

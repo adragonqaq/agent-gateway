@@ -1,22 +1,37 @@
-# 配合 docker-compose（Postgres 15432 / Redis 16379）
-# 用法见 README；LLM Key 请用环境变量注入，勿写入本文件。
+# =============================================================================
+# Profile=docker：配合仓库根目录 docker-compose.yml
+# Postgres 映射 15432，Redis 映射 16379；LLM Key 用环境变量注入，勿写入本文件。
+# =============================================================================
+
 spring:
   datasource:
+    # 指向 compose 暴露的 Postgres 端口（非容器内 5432）
     url: jdbc:postgresql://localhost:15432/agent_gateway
+    # 与 compose 中 POSTGRES_USER 一致
     username: gateway
+    # 与 compose 中 POSTGRES_PASSWORD 一致（仅本地）
     password: gateway
 
 gateway:
   run-gate:
+    # 并发闸：本地默认 memory；多实例可 export GATEWAY_RUN_GATE_TYPE=redis
     type: ${GATEWAY_RUN_GATE_TYPE:memory}
+    # Redis 地址（宿主机映射端口 16379）
     redis-address: ${GATEWAY_REDIS_ADDRESS:redis://127.0.0.1:16379}
   bootstrap:
+    # 启动种子 ADMIN Key；生产必须更换
     admin-api-key: ${GATEWAY_ADMIN_API_KEY:sk_admin_local_dev}
   agent:
+    # 执行模式：echo / agentscope（由环境变量覆盖）
     mode: ${GATEWAY_AGENT_MODE:echo}
+    # docker 联调默认 JDBC 状态存储，便于 pending tool recovery
     state-store: jdbc
     chat:
+      # OpenAI 兼容 API Key
       api-key: ${GATEWAY_LLM_API_KEY:}
+      # 模型服务根地址（示例默认 DeepSeek）
       base-url: ${GATEWAY_LLM_BASE_URL:https://api.deepseek.com}
+      # Chat Completions 路径
       endpoint-path: ${GATEWAY_LLM_ENDPOINT:/v1/chat/completions}
+      # 模型名
       model: ${GATEWAY_LLM_MODEL:deepseek-chat}

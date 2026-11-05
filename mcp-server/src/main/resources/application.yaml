@@ -1,0 +1,20 @@
+# =============================================================================
+# 演示 MCP Server 配置（独立进程，不进 gateway bootstrap）
+# 默认仅本机回环；Docker 中通过 SERVER_ADDRESS=0.0.0.0 对外暴露
+# =============================================================================
+
+server:
+  # 监听地址：本地开发用 127.0.0.1；compose 容器内设 0.0.0.0
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  # HTTP 端口；与 docker-compose / README 中 19099 对齐
+  port: 19099
+
+spring:
+  application:
+    # 应用名（日志识别）
+    name: agent-gateway-mcp-server
+
+logging:
+  level:
+    # 演示工具与传输层日志
+    com.agent.gateway.mcp: INFO

@@ -74,8 +74,8 @@ class TenantToolCatalogTest {
                 .description("ping")
                 .inputSchema(new McpSchema.JsonSchema("object", null, null, null, null, null))
                 .build();
-        when(pool.discover("tA", true)).thenReturn(List.of(
-                new RemoteMcpTool("s1", "weather", tool, null, true)));
+        when(pool.discover("tA", false)).thenReturn(List.of(
+                new RemoteMcpTool("s1", "weather", tool, null, false)));
         when(poolProvider.getIfAvailable()).thenReturn(pool);
 
         TenantToolCatalog catalog = new TenantToolCatalog(registry, policyEngine, poolProvider);

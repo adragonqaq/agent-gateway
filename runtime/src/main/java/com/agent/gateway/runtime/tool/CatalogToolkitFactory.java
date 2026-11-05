@@ -54,8 +54,12 @@ public class CatalogToolkitFactory {
             }
             Boolean readOnlyHint = def.annotations() == null ? null : def.annotations().readOnlyHint();
             boolean readOnly = Boolean.TRUE.equals(readOnlyHint);
-            // 目录要求确认，或远端未声明只读，都走确认工具
-            boolean needsConfirm = remote.requireConfirm() || !readOnly;
+            // 确认策略以目录为准（含 tool-policies）；目录未命中时：显式 requireConfirm 或非只读
+            boolean needsConfirm = catalog.tools().stream()
+                    .filter(t -> sanitize(t.name()).equals(name))
+                    .map(CatalogTool::requireConfirm)
+                    .findFirst()
+                    .orElseGet(() -> remote.requireConfirm() || !readOnly);
             Map<String, Object> params = McpTool.convertMcpSchemaToParameters(def.inputSchema(), Set.of());
             toolkit.registerAgentTool(ConfirmingMcpTool.from(
                     name,

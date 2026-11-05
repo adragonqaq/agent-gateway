@@ -8,6 +8,10 @@ alwaysApply: true
 
 本仓库所有 Java 代码必须遵守。写新代码或改旧代码时，**未满足本规则不得视为完成**。
 
+相关强制规则（一并遵守）：
+- 配置文件注释：`.cursor/rules/config-comment-standards.mdc`
+- 库表/字段 `COMMENT ON`：`.cursor/rules/db-comment-standards.mdc`
+
 ## 硬性要求
 
 1. **每个类**必须有类级 Javadoc（`/** ... */`），说明：职责、所属模块、关键约束（如租户隔离）。

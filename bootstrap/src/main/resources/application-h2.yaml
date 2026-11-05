@@ -1,20 +1,32 @@
-# 无 Docker 时本地冒烟：H2 内存库 + echo 模式
-# 用法：mvn -pl bootstrap -am spring-boot:run -Dspring-boot.run.profiles=h2
+# =============================================================================
+# Profile=h2：无 Docker 时本地冒烟（H2 内存库 + echo）
+# 用法：mvn -pl bootstrap spring-boot:run -Dspring-boot.run.profiles=h2
+# （需先 mvn -DskipTests install，或使用 -am package 后再 -pl bootstrap）
+# =============================================================================
+
 spring:
   datasource:
+    # H2 内存库，兼容 PostgreSQL 语法；进程退出即丢数据
     url: jdbc:h2:mem:agent_gateway;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=FALSE
+    # H2 默认用户
     username: sa
+    # H2 无密码
     password:
+    # 显式驱动，避免被 Postgres 驱动抢占
     driver-class-name: org.h2.Driver
 
 gateway:
   agent:
+    # 强制 echo，不依赖外网 LLM
     mode: echo
   bootstrap:
+    # 固定种子 ADMIN Key，方便 smoke.sh
     admin-api-key: sk_admin_local_dev
   confirm:
+    # 单测/冒烟关闭定时扫描，减少噪音
     sweep-enabled: false
 
 springdoc:
   swagger-ui:
+    # Swagger UI 入口路径
     path: /swagger-ui.html

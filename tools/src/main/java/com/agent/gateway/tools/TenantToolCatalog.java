@@ -66,7 +66,8 @@ public class TenantToolCatalog {
 
         TenantMcpClientPool pool = mcpClientPool.getIfAvailable();
         if (pool != null) {
-            List<RemoteMcpTool> remotes = pool.discover(id, true);
+            // 默认 requireConfirm=false；无策略时按 MCP readOnlyHint 推导（非只读 → 需确认）
+            List<RemoteMcpTool> remotes = pool.discover(id, false);
             Set<String> healthyServerIds = new HashSet<>();
             for (RemoteMcpTool remote : remotes) {
                 healthyServerIds.add(remote.serverId());
@@ -75,7 +76,15 @@ public class TenantToolCatalog {
                 if (policy != null && policy.denied()) {
                     continue;
                 }
-                boolean confirm = policy == null ? remote.requireConfirm() : policy.requireConfirm();
+                boolean confirm;
+                if (policy != null) {
+                    confirm = policy.requireConfirm();
+                } else {
+                    Boolean readOnlyHint = remote.definition().annotations() == null
+                            ? null
+                            : remote.definition().annotations().readOnlyHint();
+                    confirm = !Boolean.TRUE.equals(readOnlyHint);
+                }
                 tools.add(new CatalogTool(
                         name,
                         remote.definition().description() == null ? name : remote.definition().description(),

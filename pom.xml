@@ -12,7 +12,7 @@
     <name>agent-gateway</name>
     <description>多租户 ReAct Agent 网关（MCP 优先，不含 RAG）</description>
 
-    <!-- 模块依赖方向：bootstrap → gateway-api → runtime → (tools|memory|observe|tenant) -->
+    <!-- 模块依赖方向：bootstrap → gateway-api → runtime → (tools|memory|observe|tenant)；mcp-server 独立进程 -->
     <modules>
         <module>tenant</module>       <!-- 租户 / API Key / 策略 -->
         <module>tools</module>        <!-- MCP 注册与工具目录 -->
@@ -21,6 +21,7 @@
         <module>runtime</module>      <!-- ReAct 执行、确认门、并发闸 -->
         <module>gateway-api</module>  <!-- HTTP / SSE 接入 -->
         <module>bootstrap</module>    <!-- Spring Boot 启动入口 -->
+        <module>mcp-server</module>   <!-- 演示 MCP Server（独立进程，不进 bootstrap） -->
     </modules>
 
     <properties>

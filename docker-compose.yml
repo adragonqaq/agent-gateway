@@ -1,13 +1,33 @@
+# Agent Gateway 本地基础设施 + 演示 MCP Server
+# 用法：docker compose up -d
+# Postgres→15432，Redis→16379，demo MCP→19099（避开本机常见端口占用）
 services:
   postgres:
+    # 业务主库：租户 / MCP / 确认单 / 审计等
     image: postgres:16
     environment:
+      # 库名，与 application-docker.yaml 中 datasource 一致
       POSTGRES_DB: agent_gateway
+      # 数据库用户
       POSTGRES_USER: gateway
+      # 数据库密码（仅本地开发；生产请更换）
       POSTGRES_PASSWORD: gateway
-    # 避开本机已占用的 5432（如 pgvector）
+    # 宿主机 15432 → 容器 5432
     ports: ["15432:5432"]
+
   redis:
+    # 可选：多实例 RunGate（gateway.run-gate.type=redis）
     image: redis:7
-    # 避开本机已占用的 6379
+    # 宿主机 16379 → 容器 6379
     ports: ["16379:6379"]
+
+  mcp-server:
+    # 演示 MCP（demo_ping / demo_weather / demo_ticket_submit）
+    build:
+      context: .
+      dockerfile: mcp-server/Dockerfile
+    # 宿主机 19099 → 容器 19099；gateway 登记 transportUrl=http://127.0.0.1:19099/mcp
+    ports: ["19099:19099"]
+    environment:
+      # 覆盖默认 127.0.0.1，使容器外可连
+      SERVER_ADDRESS: "0.0.0.0"

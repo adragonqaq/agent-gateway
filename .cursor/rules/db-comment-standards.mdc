@@ -1,0 +1,46 @@
+---
+description: 强制数据库注释——每张表与每个字段必须有 COMMENT
+globs: "**/*.{sql}"
+alwaysApply: true
+---
+
+# 数据库表/字段 COMMENT 强制规范（不可跳过）
+
+适用于本仓库全部 `*.sql`（`schema.sql`、`schema-h2.sql`、升级脚本等）。
+
+## 硬性要求
+
+1. **每张表**创建后必须紧跟 `COMMENT ON TABLE <table> IS '...'`（中文，说明表职责）。
+2. **每个字段**必须有 `COMMENT ON COLUMN <table>.<column> IS '...'`（中文，说明业务含义与枚举取值）。
+3. 仅写 SQL 行尾 `--` 备注**不算合规**；必须以数据库元数据 `COMMENT ON` 落库，便于 `\d+` / 信息_schema 查阅。
+4. 新增表、加列、改名：同一变更中补齐 COMMENT；缺失 COMMENT 的 DDL **视为未完成**。
+5. 升级脚本若 `ADD COLUMN`，必须同时 `COMMENT ON COLUMN`；若建新表，表+全部列 COMMENT 齐全。
+
+## 正确示例
+
+```sql
+CREATE TABLE IF NOT EXISTS gw_example (
+    id        VARCHAR(64) PRIMARY KEY,
+    tenant_id VARCHAR(64) NOT NULL
+);
+COMMENT ON TABLE gw_example IS '示例表：说明职责';
+COMMENT ON COLUMN gw_example.id IS '主键';
+COMMENT ON COLUMN gw_example.tenant_id IS '所属租户 ID';
+```
+
+## 错误示例（禁止）
+
+```sql
+CREATE TABLE gw_example (
+    id VARCHAR(64) PRIMARY KEY, -- 主键
+    tenant_id VARCHAR(64)       -- 租户
+);
+-- 缺少 COMMENT ON TABLE / COMMENT ON COLUMN
+```
+
+## 自检清单
+
+- [ ] 每个 `CREATE TABLE` 后都有 `COMMENT ON TABLE`
+- [ ] 表内每个列都有 `COMMENT ON COLUMN`
+- [ ] 注释为中文且写清枚举/约束含义
+- [ ] 升级脚本的新列同样有 COMMENT
