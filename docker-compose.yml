@@ -31,3 +31,5 @@ services:
     environment:
       # 覆盖默认 127.0.0.1，使容器外可连
       SERVER_ADDRESS: "0.0.0.0"
+      # 可选 Bearer；非空时登记 MCP 需带 headers.Authorization=Bearer <token>
+      MCP_AUTH_TOKEN: "${MCP_AUTH_TOKEN:-}"

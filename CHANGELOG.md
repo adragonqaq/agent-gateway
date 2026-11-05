@@ -7,6 +7,7 @@
 - MCP 注册与租户工具目录；部分 Server 宕机时保留健康工具并标记 unavailable
 - 演示 `mcp-server` 模块（`demo_ping` / `demo_weather` / `demo_ticket_submit`）+ `scripts/register-demo-mcp.sh` / `smoke-mcp.sh`
 - compose 增加 `mcp-server` 服务（端口 19099）
+- demo MCP 可选 Bearer（`MCP_AUTH_TOKEN`）+ 登记 `headers` 密文联调
 - MCP 确认策略：目录/策略优先；无策略时按远端 `readOnlyHint` 推导（只读默认免确认）
 - Schema 全表/全字段 `COMMENT ON`；Cursor 强制配置注释与 DB COMMENT 规则；README 设计模式说明
 - ReAct SSE 对话（echo / agentscope）；ConfirmGate approve/deny 续跑

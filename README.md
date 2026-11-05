@@ -137,6 +137,12 @@ TENANT_ID=<tenantId> ./scripts/register-demo-mcp.sh
 # 完整 MCP 冒烟（agentscope + LLM 时会打天气/工单确认）：
 # GATEWAY_AGENT_MODE=agentscope ./scripts/smoke-mcp.sh
 
+# 可选：给 demo MCP 开 Bearer，验证 gateway Header 密文登记链路
+# export MCP_AUTH_TOKEN=demo-secret
+# MCP_AUTH_TOKEN=demo-secret mvn -pl mcp-server spring-boot:run
+# TENANT_ID=... MCP_AUTH_TOKEN=demo-secret ./scripts/register-demo-mcp.sh
+# （list 接口应见 hasHeaders=true；错误 token 时 discover 降级为 unavailable）
+
 # 对话示例（agentscope + 真实 LLM）：
 # 「上海天气怎么样」→ demo_weather（只读，默认免确认）
 # 「直接调用 demo_ticket_submit，title=打印机坏了」→ event:confirm
