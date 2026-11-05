@@ -6,6 +6,7 @@ import com.agent.gateway.observe.UsageService;
 import com.agent.gateway.runtime.ConfirmGate;
 import com.agent.gateway.runtime.InMemoryRunGate;
 import com.agent.gateway.runtime.NotFoundException;
+import com.agent.gateway.runtime.chat.ActiveRunRegistry;
 import com.agent.gateway.runtime.chat.AgentChatService;
 import com.agent.gateway.runtime.chat.EchoAgentExecutor;
 import com.agent.gateway.runtime.chat.CatalogFingerprintTracker;
@@ -65,7 +66,7 @@ class TenantIsolationIT {
         TenantToolCatalog catalog = new TenantToolCatalog(mcpRegistry, new PolicyEngine(jdbc), poolProvider);
         chatService = new AgentChatService(
                 runGate, catalog, stateStore, new EchoAgentExecutor(new CatalogFingerprintTracker(), confirmGate), new CatalogFingerprintTracker(),
-                new AuditService(jdbc), new UsageService(jdbc), confirmGate);
+                new AuditService(jdbc), new UsageService(jdbc), confirmGate, new ActiveRunRegistry());
 
         tenantRepo.insertTenant(new TenantRecord("tA", "A", "ACTIVE", "standard", "platform", 5));
         tenantRepo.insertTenant(new TenantRecord("tB", "B", "ACTIVE", "standard", "platform", 5));

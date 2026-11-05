@@ -54,7 +54,8 @@ class StreamingChatServiceTest {
                 new CatalogFingerprintTracker(),
                 new AuditService(jdbc),
                 new UsageService(jdbc),
-                confirmGate);
+                confirmGate,
+                new ActiveRunRegistry());
     }
 
     @Test

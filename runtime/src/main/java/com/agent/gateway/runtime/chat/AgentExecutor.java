@@ -43,4 +43,17 @@ public interface AgentExecutor {
     void resumeConfirm(TenantContext tenant, String resumeTaskId, List<PendingConfirmation> settled,
                        boolean approved, ResolvedCatalog catalog,
                        Consumer<AgentEvent> events, Consumer<String> stateSaver);
+
+    /**
+     * 返回取消时用于打断上游执行的动作。
+     * <p>默认空操作；AgentScope 实现应调用 {@code agent.interrupt(tenantId, conversationId)}。
+     *
+     * @param tenantId 租户 ID
+     * @param conversationId 会话 ID
+     * @return 可重复安全调用的打断 Runnable
+     */
+    default Runnable interruptAction(String tenantId, String conversationId) {
+        return () -> {
+        };
+    }
 }

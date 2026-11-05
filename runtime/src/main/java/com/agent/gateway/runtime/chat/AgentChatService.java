@@ -14,15 +14,13 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
  * 租户聊天运行编排服务。
- * <p>所属模块：runtime。占并发槽、解析工具目录并调用执行器；支持边跑边推事件与确认续跑。
+ * <p>所属模块：runtime。占并发槽、解析工具目录并调用执行器；支持边跑边推、确认续跑与真正打断取消。
  */
 @Service
 public class AgentChatService {
@@ -35,7 +33,7 @@ public class AgentChatService {
     private final AuditService auditService;
     private final UsageService usageService;
     private final ConfirmGate confirmGate;
-    private final Map<String, String> taskOwners = new ConcurrentHashMap<>();
+    private final ActiveRunRegistry activeRuns;
 
     /**
      * 注入一轮聊天所需的闸门、目录、状态与观测依赖。
@@ -48,7 +46,8 @@ public class AgentChatService {
             CatalogFingerprintTracker fingerprintTracker,
             AuditService auditService,
             UsageService usageService,
-            ConfirmGate confirmGate) {
+            ConfirmGate confirmGate,
+            ActiveRunRegistry activeRuns) {
         this.runGate = runGate;
         this.toolCatalog = toolCatalog;
         this.stateStore = stateStore;
@@ -57,6 +56,7 @@ public class AgentChatService {
         this.auditService = auditService;
         this.usageService = usageService;
         this.confirmGate = confirmGate;
+        this.activeRuns = activeRuns;
     }
 
     /**
@@ -71,8 +71,6 @@ public class AgentChatService {
 
     /**
      * 边执行边把事件推给 {@code sink}，适合 SSE 流式输出。
-     * <p>占用槽位成功后立刻回调 {@code onTaskReady}，便于客户端先收到 meta.taskId；
-     * 调用方应在独立线程中调用，以便 HTTP 线程立刻返回 {@code SseEmitter}。
      *
      * @param tenant 租户上下文
      * @param conversationId 会话 ID
@@ -94,8 +92,14 @@ public class AgentChatService {
         if (!acquired.acquired()) {
             throw new IllegalStateException(acquired.reason());
         }
-        taskOwners.put(taskId, tenant.tenantId());
-        // 先告知 taskId，客户端才能在流中途发起 cancel
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        // 登记活跃任务，cancel 才能找到会话并 interrupt
+        activeRuns.register(
+                taskId,
+                tenant.tenantId(),
+                conversationId,
+                cancelled,
+                agentExecutor.interruptAction(tenant.tenantId(), conversationId));
         onTaskReady.accept(taskId);
         ResolvedCatalog catalog = toolCatalog.resolve(tenant.tenantId());
         fingerprintTracker.getOrRebuild(tenant.tenantId(), catalog);
@@ -103,19 +107,26 @@ public class AgentChatService {
         AtomicBoolean awaitingConfirm = new AtomicBoolean(false);
         try {
             agentExecutor.run(tenant, taskId, conversationId, message, catalog, prior, event -> {
+                if (cancelled.get()) {
+                    // 已取消则丢弃后续事件，避免客户端在 cancel 后再收到 answer
+                    return;
+                }
                 if ("confirm".equals(event.type())) {
                     awaitingConfirm.set(true);
                 }
-                // 立即下推，不等整轮结束
                 sink.accept(event);
             }, payload -> stateStore.save(tenant.tenantId(), conversationId, payload));
-            if (awaitingConfirm.get()) {
+            if (cancelled.get()) {
+                sink.accept(new AgentEvent("cancel", "cancelled"));
+                auditService.record(tenant.tenantId(), "CHAT_CANCEL", taskId, "{}");
+            } else if (awaitingConfirm.get()) {
                 auditService.record(tenant.tenantId(), "CHAT_AWAITING_CONFIRM", taskId, "{}");
             } else {
                 usageService.record(tenant.tenantId(), taskId, "runs", 1);
                 auditService.record(tenant.tenantId(), "CHAT_COMPLETE", taskId, "{}");
             }
         } finally {
+            activeRuns.remove(taskId);
             runGate.release(tenant.tenantId(), taskId);
         }
         return taskId;
@@ -133,14 +144,6 @@ public class AgentChatService {
 
     /**
      * 结算确认单后边续跑边推事件。
-     *
-     * @param tenant 租户上下文
-     * @param confirmId 确认单 ID
-     * @param approved 是否批准
-     * @param maxConcurrent 续跑并发上限
-     * @param onTaskReady 续跑 taskId 就绪回调
-     * @param sink 事件消费者
-     * @return 续跑 taskId
      */
     public String resumeAfterConfirmStreaming(
             TenantContext tenant,
@@ -166,13 +169,22 @@ public class AgentChatService {
         if (!acquired.acquired()) {
             throw new IllegalStateException(acquired.reason());
         }
-        taskOwners.put(resumeTaskId, tenant.tenantId());
+        String conversationId = anchor.conversationId() == null ? "" : anchor.conversationId();
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        activeRuns.register(
+                resumeTaskId,
+                tenant.tenantId(),
+                conversationId,
+                cancelled,
+                agentExecutor.interruptAction(tenant.tenantId(), conversationId));
         onTaskReady.accept(resumeTaskId);
         ResolvedCatalog catalog = toolCatalog.resolve(tenant.tenantId());
-        String conversationId = anchor.conversationId() == null ? "" : anchor.conversationId();
         AtomicBoolean awaitingConfirm = new AtomicBoolean(false);
         try {
             agentExecutor.resumeConfirm(tenant, resumeTaskId, settled, approved, catalog, event -> {
+                if (cancelled.get()) {
+                    return;
+                }
                 if ("confirm".equals(event.type())) {
                     awaitingConfirm.set(true);
                 }
@@ -182,27 +194,36 @@ public class AgentChatService {
                     stateStore.save(tenant.tenantId(), conversationId, payload);
                 }
             });
-            if (!awaitingConfirm.get()) {
+            if (cancelled.get()) {
+                sink.accept(new AgentEvent("cancel", "cancelled"));
+                auditService.record(tenant.tenantId(), "CHAT_CANCEL", resumeTaskId, "{}");
+            } else if (!awaitingConfirm.get()) {
                 usageService.record(tenant.tenantId(), resumeTaskId, "runs", 1);
                 auditService.record(tenant.tenantId(), "CHAT_CONFIRM_RESUME_COMPLETE", resumeTaskId, "{}");
             }
         } finally {
+            activeRuns.remove(resumeTaskId);
             runGate.release(tenant.tenantId(), resumeTaskId);
         }
         return resumeTaskId;
     }
 
     /**
-     * 取消指定任务。仅任务所属租户可以取消。
+     * 取消指定任务：触发 Agent interrupt，并释放并发槽。
+     * <p>仅任务所属租户可以取消；未知或跨租户统一按未找到处理。
+     *
+     * @param requesterTenantId 请求方租户 ID
+     * @param taskId 任务 ID
      */
     public void cancel(String requesterTenantId, String taskId) {
-        String owner = taskOwners.get(taskId);
-        if (owner == null || !owner.equals(requesterTenantId)) {
+        ActiveRunRegistry.ActiveRun run = activeRuns.find(taskId)
+                .orElseThrow(() -> new com.agent.gateway.runtime.NotFoundException("task not found"));
+        if (!run.tenantId().equals(requesterTenantId)) {
             throw new com.agent.gateway.runtime.NotFoundException("task not found");
         }
-        runGate.release(owner, taskId);
-        auditService.record(owner, "CHAT_CANCEL", taskId, "{}");
-        taskOwners.remove(taskId);
+        // 先 interrupt 上游流，再由执行 finally 释放闸门与登记
+        run.requestCancel();
+        auditService.record(run.tenantId(), "CHAT_CANCEL_REQUESTED", taskId, "{}");
     }
 
     /**

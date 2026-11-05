@@ -38,7 +38,11 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.startsWith("/actuator") || path.equals("/health");
+        // Swagger / OpenAPI 文档放行，便于本地浏览契约
+        return path.startsWith("/actuator")
+                || path.equals("/health")
+                || path.startsWith("/swagger-ui")
+                || path.startsWith("/v3/api-docs");
     }
 
     /**

@@ -84,7 +84,11 @@ curl -N -X POST http://localhost:8080/v1/chat \
   -d '{"message":"hello"}'
 ```
 
-### 5. 验证测试
+### 5. OpenAPI
+
+启动后打开：http://localhost:8080/swagger-ui.html
+
+### 6. 验证测试
 
 ```bash
 mvn test

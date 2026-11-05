@@ -246,6 +246,23 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
         }
     }
 
+
+    /**
+     * {@inheritDoc}
+     * <p>对缓存中的 ReActAgent 调用 interrupt，打断进行中的 streamEvents。
+     */
+    @Override
+    public Runnable interruptAction(String tenantId, String conversationId) {
+        return () -> agentProvider.getIfPresent(tenantId).ifPresent(agent -> {
+            try {
+                // 按租户+会话打断，与 RuntimeContext 中的 userId/sessionId 对齐
+                agent.interrupt(tenantId, conversationId);
+            } catch (Exception ignored) {
+                // 取消路径不能因 interrupt 异常而失败，闸门仍需释放
+            }
+        });
+    }
+
     private static String escape(String raw) {
         return raw.replace("\\", "\\\\").replace("\"", "'").replace("\n", "\\n");
     }

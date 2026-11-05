@@ -61,3 +61,10 @@ gateway:
     admin-api-key: ${GATEWAY_ADMIN_API_KEY:}
     # 种子租户名称
     admin-tenant-name: ${GATEWAY_ADMIN_TENANT_NAME:platform}
+
+# OpenAPI / Swagger UI（默认开启；生产可设 springdoc.api-docs.enabled=false）
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs

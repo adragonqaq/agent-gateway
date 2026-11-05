@@ -90,6 +90,18 @@ public class ReActAgentProvider {
     }
 
     /**
+     * 仅读取缓存中的 Agent，不触发重建。
+     * <p>供 cancel 路径 interrupt，避免取消时误重建工具集。
+     *
+     * @param tenantId 租户 ID
+     * @return 缓存中的 Agent；未命中为空
+     */
+    public java.util.Optional<ReActAgent> getIfPresent(String tenantId) {
+        CachedAgent cached = cache.get(tenantId);
+        return cached == null ? java.util.Optional.empty() : java.util.Optional.of(cached.agent());
+    }
+
+    /**
      * @return 进程内累计的 Agent 重建次数
      */
     public int rebuildCount() {
