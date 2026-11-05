@@ -45,3 +45,17 @@ MVP agent mode defaults to `gateway.agent.mode=echo` (deterministic stub). Agent
 ```bash
 mvn test
 ```
+
+## Agent mode
+
+- `gateway.agent.mode=echo` (default): deterministic stub for local tests
+- `gateway.agent.mode=agentscope`: real AgentScope ReAct + OpenAI-compatible model
+
+```bash
+export GATEWAY_AGENT_MODE=agentscope
+export GATEWAY_LLM_API_KEY=sk-...
+export GATEWAY_LLM_BASE_URL=https://api.openai.com
+export GATEWAY_LLM_MODEL=gpt-4o-mini
+```
+
+Catalog tools are currently registered as stub AgentTools until MCP proxy execution is wired.
