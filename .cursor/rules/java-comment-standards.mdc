@@ -1,0 +1,66 @@
+---
+description: 强制 Java 注释规范——类、方法、关键调用行必须有中文说明
+globs: "**/*.java"
+alwaysApply: true
+---
+
+# Java 注释强制规范（不可跳过）
+
+本仓库所有 Java 代码必须遵守。写新代码或改旧代码时，**未满足本规则不得视为完成**。
+
+## 硬性要求
+
+1. **每个类**必须有类级 Javadoc（`/** ... */`），说明：职责、所属模块、关键约束（如租户隔离）。
+2. **每个方法**（含 `private`）必须有方法级 Javadoc，说明：做什么、参数含义、返回值、可能抛出的异常。
+3. **关键调用行**必须有行上/行前中文注释，说明**为什么**要调用（不是复述方法名）。包括但不限于：
+   - 鉴权 / 租户解析
+   - RunGate 抢占与释放
+   - MCP 连接 / 工具注册
+   - 状态读写、确认门、审计埋点
+   - AgentScope `streamEvents` / `interrupt` / `saveAgentState`
+4. 注释使用**中文**，面向后续维护者；禁止空注释、禁止只写「TODO」凑数。
+5. 构造方法、`record` 紧凑类型也要有类注释；`record` 组件含义在类注释中写清。
+
+## 正确示例
+
+```java
+/**
+ * 按租户解析 API Key，产出请求级 TenantContext。
+ * 属于 tenant 模块；无效 Key 统一抛 UnauthorizedException，避免泄露租户是否存在。
+ */
+public class TenantResolver {
+
+    /**
+     * 将原始 API Key 解析为租户上下文。
+     *
+     * @param rawApiKey 请求头中的明文 Key
+     * @return 绑定了 tenantId / role / 模型档位的上下文
+     * @throws UnauthorizedException Key 为空、哈希未命中或租户非 ACTIVE
+     */
+    public TenantContext resolve(String rawApiKey) {
+        // 只存哈希，避免明文 Key 进入查询条件或日志
+        String hash = ApiKeyHasher.sha256Hex(rawApiKey.trim());
+        // 联表要求租户 ACTIVE，防止停用租户的 Key 仍能进数据面
+        ApiKeyRecord key = tenantRepository.findActiveByKeyHash(hash)
+                .orElseThrow(() -> new UnauthorizedException("Invalid API key"));
+        return ...;
+    }
+}
+```
+
+## 错误示例（禁止）
+
+```java
+// 调用 resolve
+TenantContext ctx = resolver.resolve(key);
+
+/** 处理 */
+public void run() { }
+```
+
+## 自检清单（改完必勾）
+
+- [ ] 本文件每个 `class` / `interface` / `enum` / `record` 都有类注释
+- [ ] 本文件每个方法都有方法注释
+- [ ] 所有跨组件调用旁都有「为什么调用」的中文行注释
+- [ ] 没有无意义注释，没有英文-only 敷衍一句

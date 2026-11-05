@@ -13,13 +13,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 按租户目录组装 AgentScope Toolkit。
+ * <p>所属模块：runtime。优先注册真实 MCP 工具，目录中尚未挂上客户端的条目用占位工具补齐。
+ */
 @Component
 public class CatalogToolkitFactory {
 
+    /**
+     * 仅按目录构建 Toolkit，不挂远端 MCP 工具。
+     *
+     * @param catalog 已解析目录
+     * @return 工具集
+     */
     public Toolkit build(ResolvedCatalog catalog) {
         return build(catalog, List.of());
     }
 
+    /**
+     * 用远端 MCP 工具与目录共同构建 Toolkit。
+     *
+     * @param catalog 已解析目录，决定可见性与确认策略的来源之一
+     * @param remotes 已发现的远端工具；可为空
+     * @return 已注册工具的 Toolkit
+     */
     public Toolkit build(ResolvedCatalog catalog, List<RemoteMcpTool> remotes) {
         Toolkit toolkit = new Toolkit();
         Map<String, RemoteMcpTool> byName = new HashMap<>();
@@ -32,10 +49,12 @@ public class CatalogToolkitFactory {
             McpSchema.Tool def = remote.definition();
             String name = sanitize(def.name());
             if (registered.contains(name)) {
+                // 同名工具只注册一次，避免 Agent 看到重复函数
                 continue;
             }
             Boolean readOnlyHint = def.annotations() == null ? null : def.annotations().readOnlyHint();
             boolean readOnly = Boolean.TRUE.equals(readOnlyHint);
+            // 目录要求确认，或远端未声明只读，都走确认工具
             boolean needsConfirm = remote.requireConfirm() || !readOnly;
             Map<String, Object> params = McpTool.convertMcpSchemaToParameters(def.inputSchema(), Set.of());
             toolkit.registerAgentTool(ConfirmingMcpTool.from(
@@ -51,10 +70,12 @@ public class CatalogToolkitFactory {
 
         for (CatalogTool tool : catalog.tools()) {
             if (!tool.available()) {
+                // 不可用条目不暴露给模型，避免调用必然失败的工具
                 continue;
             }
             String name = CatalogStubTool.sanitize(tool.name());
             if (toolkit.getToolNames().contains(name) || byName.containsKey(name)) {
+                // 已有真实 MCP 绑定则不再塞占位实现
                 continue;
             }
             toolkit.registerAgentTool(new CatalogStubTool(tool));
@@ -62,6 +83,12 @@ public class CatalogToolkitFactory {
         return toolkit;
     }
 
+    /**
+     * 与 {@link CatalogStubTool#sanitize(String)} 保持同一套命名，保证远端名与占位名可对齐。
+     *
+     * @param raw 原始工具名
+     * @return 规范化名称
+     */
     private static String sanitize(String raw) {
         return CatalogStubTool.sanitize(raw);
     }
