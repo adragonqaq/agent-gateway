@@ -15,7 +15,7 @@ import java.util.Set;
 
 /**
  * 按租户目录组装 AgentScope Toolkit。
- * <p>所属模块：runtime。优先注册真实 MCP 工具，目录中尚未挂上客户端的条目用占位工具补齐。
+ * <p>所属模块：runtime。优先注册真实 MCP 工具；不可用 Server 注册降级 ERROR 工具；其余用占位补齐。
  */
 @Component
 public class CatalogToolkitFactory {
@@ -69,13 +69,14 @@ public class CatalogToolkitFactory {
         }
 
         for (CatalogTool tool : catalog.tools()) {
-            if (!tool.available()) {
-                // 不可用条目不暴露给模型，避免调用必然失败的工具
-                continue;
-            }
             String name = CatalogStubTool.sanitize(tool.name());
             if (toolkit.getToolNames().contains(name) || byName.containsKey(name)) {
-                // 已有真实 MCP 绑定则不再塞占位实现
+                // 已有真实 MCP 绑定则不再塞占位/降级实现
+                continue;
+            }
+            if (!tool.available()) {
+                // 降级工具仍注册，模型可见但调用返回 ERROR，符合「不中断整轮」
+                toolkit.registerAgentTool(new UnavailableCatalogTool(tool));
                 continue;
             }
             toolkit.registerAgentTool(new CatalogStubTool(tool));

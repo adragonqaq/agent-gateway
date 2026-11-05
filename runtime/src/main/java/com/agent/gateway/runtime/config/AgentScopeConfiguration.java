@@ -1,16 +1,20 @@
 package com.agent.gateway.runtime.config;
 
+import com.agent.gateway.runtime.state.JdbcAgentStateStore;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.state.InMemoryAgentStateStore;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.StringUtils;
 
 /**
  * AgentScope 运行时的 Spring 配置。
- * <p>所属模块：runtime。仅在 agentscope 模式下提供聊天模型与内存状态存储。
+ * <p>所属模块：runtime。仅在 agentscope 模式下提供聊天模型与 Agent 状态存储。
  */
 @Configuration
 @EnableConfigurationProperties(GatewayAgentProperties.class)
@@ -28,7 +32,6 @@ public class AgentScopeConfiguration {
     public OpenAIChatModel openAIChatModel(GatewayAgentProperties properties) {
         GatewayAgentProperties.Chat chat = properties.getChat();
         if (!StringUtils.hasText(chat.getApiKey())) {
-            // 没有密钥无法建连，尽早失败而不是在首个请求里才报错
             throw new IllegalStateException("gateway.agent.chat.api-key is required when mode=agentscope");
         }
         return OpenAIChatModel.builder()
@@ -37,19 +40,25 @@ public class AgentScopeConfiguration {
                 .endpointPath(chat.getEndpointPath())
                 .modelName(chat.getModel())
                 .stream(chat.isStream())
-                // 工具调用与原生结构化输出同时开启容易冲突，这里关闭后者
                 .nativeStructuredOutputWithTools(false)
                 .build();
     }
 
     /**
-     * 进程内 Agent 状态存储，供确认中断后恢复工具调用。
+     * Agent 状态存储：默认 JDBC；{@code gateway.agent.state-store=memory} 时用内存。
      *
-     * @return 内存状态存储
+     * @param jdbc JDBC 模板
+     * @param stateStoreType memory 或 jdbc
+     * @return AgentStateStore
      */
     @Bean
     @ConditionalOnProperty(name = "gateway.agent.mode", havingValue = "agentscope")
-    public InMemoryAgentStateStore agentStateStore() {
-        return new InMemoryAgentStateStore();
+    public AgentStateStore agentStateStore(
+            JdbcTemplate jdbc,
+            @Value("${gateway.agent.state-store:jdbc}") String stateStoreType) {
+        if ("memory".equalsIgnoreCase(stateStoreType)) {
+            return new InMemoryAgentStateStore();
+        }
+        return new JdbcAgentStateStore(jdbc);
     }
 }

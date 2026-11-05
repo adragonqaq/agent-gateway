@@ -10,6 +10,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 
+import com.agent.gateway.tools.mcp.RemoteMcpTool;
+import com.agent.gateway.tools.mcp.TenantMcpClientPool;
+import io.modelcontextprotocol.spec.McpSchema;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -58,5 +62,25 @@ class TenantToolCatalogTest {
         ResolvedCatalog resolved = catalog.resolve("tA");
         assertEquals(1, resolved.tools().size());
         assertFalse(resolved.tools().get(0).available());
+    }
+
+    @Test
+    void partialServerFailureKeepsHealthyToolsAndMarksDownServerUnavailable() {
+        registry.upsert(new McpServerRecord("s1", "tA", "weather", "http://a", null, "ACTIVE"));
+        registry.upsert(new McpServerRecord("s2", "tA", "orders", "http://b", null, "ACTIVE"));
+        TenantMcpClientPool pool = mock(TenantMcpClientPool.class);
+        McpSchema.Tool tool = McpSchema.Tool.builder()
+                .name("weather_ping")
+                .description("ping")
+                .inputSchema(new McpSchema.JsonSchema("object", null, null, null, null, null))
+                .build();
+        when(pool.discover("tA", true)).thenReturn(List.of(
+                new RemoteMcpTool("s1", "weather", tool, null, true)));
+        when(poolProvider.getIfAvailable()).thenReturn(pool);
+
+        TenantToolCatalog catalog = new TenantToolCatalog(registry, policyEngine, poolProvider);
+        ResolvedCatalog resolved = catalog.resolve("tA");
+        assertTrue(resolved.tools().stream().anyMatch(t -> "weather_ping".equals(t.name()) && t.available()));
+        assertTrue(resolved.tools().stream().anyMatch(t -> t.name().endsWith(".unavailable") && !t.available()));
     }
 }

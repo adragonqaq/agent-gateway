@@ -2,6 +2,8 @@ package com.agent.gateway.config;
 
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
@@ -13,6 +15,7 @@ import javax.sql.DataSource;
  * 使用 classpath 下的 {@code db/schema.sql}，允许已存在对象时继续，便于幂等部署。
  */
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class SchemaInitializer implements ApplicationRunner {
 
     private final DataSource dataSource;
@@ -32,6 +35,7 @@ public class SchemaInitializer implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         ResourceDatabasePopulator populator = new ResourceDatabasePopulator(new ClassPathResource("db/schema.sql"));
+        // H2/Postgres 幂等建表；单句失败不阻断后续（IF NOT EXISTS）
         populator.setContinueOnError(true);
         populator.execute(dataSource);
     }

@@ -1,0 +1,20 @@
+# 无 Docker 时本地冒烟：H2 内存库 + echo 模式
+# 用法：mvn -pl bootstrap -am spring-boot:run -Dspring-boot.run.profiles=h2
+spring:
+  datasource:
+    url: jdbc:h2:mem:agent_gateway;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+gateway:
+  agent:
+    mode: echo
+  bootstrap:
+    admin-api-key: sk_admin_local_dev
+  confirm:
+    sweep-enabled: false
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

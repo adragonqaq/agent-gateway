@@ -18,9 +18,10 @@ spring:
     password: gateway
   autoconfigure:
     exclude:
-      # 默认不用 Spring Data Redis；RunGate=redis 时由 Redisson 自行建连
+      # 默认不用 Spring Data Redis；RunGate=redis 时由 RedisRunGateConfiguration 显式建 Redisson
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.redisson.spring.starter.RedissonAutoConfigurationV2
 
 gateway:
   agent:
@@ -30,6 +31,8 @@ gateway:
     persona: You are Agent Gateway, a helpful multi-tenant tool-using assistant.
     # ReAct 最大迭代轮数
     max-iters: 8
+    # AgentScope 状态：jdbc（默认，可恢复 pending tools）| memory（仅调试）
+    state-store: ${GATEWAY_AGENT_STATE_STORE:jdbc}
     # 模型调用失败重试次数（建议保持较小，避免流式重复输出）
     max-retries: 2
     chat:

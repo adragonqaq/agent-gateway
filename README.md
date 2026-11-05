@@ -58,7 +58,7 @@ export GATEWAY_ADMIN_API_KEY=sk_admin_local_dev     # 可选：启动种子 ADMI
 ### 3. 启动
 
 ```bash
-mvn -pl bootstrap -am spring-boot:run
+mvn -pl bootstrap -am spring-boot:run -Dspring-boot.run.mainClass=com.agent.gateway.GatewayApplication
 # 默认 http://localhost:8080
 ```
 
@@ -100,6 +100,22 @@ curl -s http://localhost:8080/v1/observe/usage -H "Authorization: Bearer <apiKey
 ```bash
 mvn test
 ```
+
+### 7. 冒烟脚本
+
+```bash
+# 另开终端，服务已启动后：
+./scripts/smoke.sh
+
+# 无 Docker 时可用 H2 profile：
+# mvn -pl bootstrap -am spring-boot:run -Dspring-boot.run.profiles=h2 -Dspring-boot.run.mainClass=com.agent.gateway.GatewayApplication
+```
+
+### 8. 生产提示
+
+- 关闭 Swagger：`springdoc.api-docs.enabled=false`
+- 更换默认 `GATEWAY_SECRET_MASTER_KEY` / `GATEWAY_ADMIN_API_KEY`
+- 变更说明见 [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
@@ -173,7 +189,7 @@ Client
 | 鉴权 | `Authorization: Bearer sk_...` 或 `X-Api-Key` |
 | 部署 | 静态资源独立站点或反向代理到同域 `/`，API 走 `/v1` `/admin` |
 
-前端仓库建议与本仓库平级新建（例如 `agent-gateway-web`），通过 OpenAPI（待补 Springdoc）契约联调。
+前端仓库建议与本仓库平级新建（例如 `agent-gateway-web`），通过 OpenAPI（`/swagger-ui.html`）契约联调。
 
 ---
 

@@ -6,7 +6,7 @@ import com.agent.gateway.tools.ResolvedCatalog;
 import com.agent.gateway.tools.mcp.RemoteMcpTool;
 import com.agent.gateway.tools.mcp.TenantMcpClientPool;
 import io.agentscope.core.ReActAgent;
-import io.agentscope.core.state.InMemoryAgentStateStore;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -25,7 +25,7 @@ public class ReActAgentProvider {
 
     private final GatewayAgentProperties properties;
     private final OpenAIChatModel chatModel;
-    private final InMemoryAgentStateStore stateStore;
+    private final AgentStateStore stateStore;
     private final CatalogToolkitFactory toolkitFactory;
     private final TenantMcpClientPool mcpClientPool;
     private final ConcurrentHashMap<String, CachedAgent> cache = new ConcurrentHashMap<>();
@@ -34,14 +34,14 @@ public class ReActAgentProvider {
     /**
      * @param properties Agent 人设与迭代上限
      * @param chatModel OpenAI 兼容聊天模型
-     * @param stateStore Agent 内存状态存储
+     * @param stateStore Agent 状态存储（默认 JDBC）
      * @param toolkitFactory 由目录与远端 MCP 工具组装 Toolkit
      * @param mcpClientPool 租户 MCP 连接池，重建时重新发现工具
      */
     public ReActAgentProvider(
             GatewayAgentProperties properties,
             OpenAIChatModel chatModel,
-            InMemoryAgentStateStore stateStore,
+            AgentStateStore stateStore,
             CatalogToolkitFactory toolkitFactory,
             TenantMcpClientPool mcpClientPool) {
         this.properties = properties;

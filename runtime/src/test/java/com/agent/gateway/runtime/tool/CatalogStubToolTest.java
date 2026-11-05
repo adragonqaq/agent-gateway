@@ -13,13 +13,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CatalogStubToolTest {
 
     @Test
-    void buildsToolkitOnlyForAvailableTools() {
+    void buildsToolkitWithAvailableStubsAndUnavailableDegradedTools() {
         CatalogToolkitFactory factory = new CatalogToolkitFactory();
         ResolvedCatalog catalog = new ResolvedCatalog("t1", List.of(
                 new CatalogTool("weather.ping", "ping", "s1", true, false),
                 new CatalogTool("tickets.book", "book", "s2", false, true)));
         Toolkit toolkit = factory.build(catalog);
-        assertEquals(1, toolkit.getToolNames().size());
+        // 健康工具走 stub；不可用工具仍注册为 ERROR 降级工具
+        assertEquals(2, toolkit.getToolNames().size());
         assertTrue(toolkit.getToolNames().contains("weather_ping"));
+        assertTrue(toolkit.getToolNames().contains("tickets_book"));
     }
 }

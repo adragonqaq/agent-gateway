@@ -27,11 +27,11 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- 隔离 IT 用内存库 -->
+        <!-- 隔离 IT + application-h2 冒烟配置 -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <scope>test</scope>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
     <build>
@@ -40,6 +40,9 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.agent.gateway.GatewayApplication</mainClass>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>

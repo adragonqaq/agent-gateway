@@ -6,16 +6,20 @@ import com.agent.gateway.tenant.ToolPolicy;
 import com.agent.gateway.tools.mcp.RemoteMcpTool;
 import com.agent.gateway.tools.mcp.TenantMcpClientPool;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
  * 租户工具目录解析器。
  * <p>所属模块：tools。优先通过 MCP 连接池实时发现工具，失败时回退到注册表+占位发现，并套用租户策略。
+ * 部分 Server 不可达时保留健康工具，并为宕机 Server 写入 unavailable 标记。
  */
 @Component
 public class TenantToolCatalog {
@@ -27,11 +31,8 @@ public class TenantToolCatalog {
 
     /**
      * 生产环境构造：回退发现为每个 Server 生成 ping 占位工具。
-     *
-     * @param mcpRegistry MCP 仓库
-     * @param policyEngine 租户工具策略引擎
-     * @param mcpClientPool MCP 连接池（可选）
      */
+    @Autowired
     public TenantToolCatalog(
             McpRegistry mcpRegistry,
             PolicyEngine policyEngine,
@@ -42,11 +43,6 @@ public class TenantToolCatalog {
 
     /**
      * 可注入回退发现逻辑的构造，便于单测。
-     *
-     * @param mcpRegistry MCP 仓库
-     * @param policyEngine 策略引擎
-     * @param mcpClientPool MCP 连接池
-     * @param fallbackDiscovery 无法实时发现时的回退工具生成器
      */
     TenantToolCatalog(
             McpRegistry mcpRegistry,
@@ -61,53 +57,60 @@ public class TenantToolCatalog {
 
     /**
      * 解析指定租户当前可见工具目录。
-     *
-     * @param tenantId 租户 ID
-     * @return 解析后的目录快照
      */
     public ResolvedCatalog resolve(String tenantId) {
         String id = TenantIds.require(tenantId);
         Map<String, ToolPolicy> policies = policyEngine.policiesFor(id);
         List<CatalogTool> tools = new ArrayList<>();
+        List<McpServerRecord> servers = mcpRegistry.listActive(id);
 
         TenantMcpClientPool pool = mcpClientPool.getIfAvailable();
         if (pool != null) {
-            // 优先实时连接 MCP，以便目录反映远端真实工具列表
             List<RemoteMcpTool> remotes = pool.discover(id, true);
-            if (!remotes.isEmpty()) {
-                for (RemoteMcpTool remote : remotes) {
-                    String name = remote.definition().name();
-                    ToolPolicy policy = policies.get(name);
-                    if (policy != null && policy.denied()) {
-                        // 策略显式拒绝的工具不进入目录，模型无法看到也无法调用
-                        continue;
-                    }
-                    boolean confirm = policy == null ? remote.requireConfirm() : policy.requireConfirm();
-                    tools.add(new CatalogTool(
-                            name,
-                            remote.definition().description() == null ? name : remote.definition().description(),
-                            remote.serverId(),
-                            true,
-                            confirm));
+            Set<String> healthyServerIds = new HashSet<>();
+            for (RemoteMcpTool remote : remotes) {
+                healthyServerIds.add(remote.serverId());
+                String name = remote.definition().name();
+                ToolPolicy policy = policies.get(name);
+                if (policy != null && policy.denied()) {
+                    continue;
                 }
+                boolean confirm = policy == null ? remote.requireConfirm() : policy.requireConfirm();
+                tools.add(new CatalogTool(
+                        name,
+                        remote.definition().description() == null ? name : remote.definition().description(),
+                        remote.serverId(),
+                        true,
+                        confirm));
+            }
+            // 注册表中有、但本轮 discover 未产出任何工具的 Server → 标不可用
+            for (McpServerRecord server : servers) {
+                if (!healthyServerIds.contains(server.id())) {
+                    tools.add(new CatalogTool(
+                            server.name() + ".unavailable",
+                            "MCP unreachable: " + server.name(),
+                            server.id(),
+                            false,
+                            true));
+                }
+            }
+            if (!tools.isEmpty() || servers.isEmpty()) {
                 return new ResolvedCatalog(id, List.copyOf(tools));
             }
         }
 
-        // 实时发现为空时回退注册表，避免 MCP 短暂不可用导致目录全空
-        for (McpServerRecord server : mcpRegistry.listActive(id)) {
+        // 无连接池或实时发现彻底为空：回退注册表占位发现
+        for (McpServerRecord server : servers) {
             List<CatalogTool> discovered;
             try {
                 discovered = fallbackDiscovery.apply(server);
             } catch (RuntimeException ex) {
-                // 发现失败标成不可用，而不是静默丢弃，便于上层感知 MCP 不可达
                 tools.add(new CatalogTool(server.name() + ".unavailable", "MCP unreachable", server.id(), false, true));
                 continue;
             }
             for (CatalogTool tool : discovered) {
                 ToolPolicy policy = policies.get(tool.name());
                 if (policy != null && policy.denied()) {
-                    // 回退路径同样丢弃被策略拒绝的工具
                     continue;
                 }
                 boolean confirm = policy == null || policy.requireConfirm();

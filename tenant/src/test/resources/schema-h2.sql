@@ -82,6 +82,20 @@ CREATE TABLE IF NOT EXISTS gw_agent_state (
 );
 
 -- -----------------------------------------------------------------------------
+-- AgentScope 框架状态：按 tenant + conversation + state_key 持久化，供 pending tool recovery
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gw_agentscope_state (
+    tenant_id       VARCHAR(64) NOT NULL,                    -- 即 AgentScope userId（租户）
+    conversation_id VARCHAR(64) NOT NULL,                    -- 即 AgentScope sessionId
+    state_key       VARCHAR(128) NOT NULL,                   -- 框架状态键，如 agent_state
+    payload         TEXT NOT NULL,                           -- 框架自有 JSON，业务侧不解析
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, conversation_id, state_key)
+);
+CREATE INDEX IF NOT EXISTS idx_gw_as_state_tenant ON gw_agentscope_state(tenant_id);
+
+
+-- -----------------------------------------------------------------------------
 -- 人工确认单：危险工具挂起后由客户端 approve/deny
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS gw_confirm (

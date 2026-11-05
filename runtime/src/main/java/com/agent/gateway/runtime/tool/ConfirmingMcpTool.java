@@ -4,7 +4,9 @@ import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionDecision;
 import io.agentscope.core.tool.mcp.McpClientWrapper;
 import io.agentscope.core.tool.mcp.McpTool;
-import io.modelcontextprotocol.spec.McpSchema;
+import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.message.ToolResultState;
+import io.agentscope.core.tool.ToolCallParam;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -54,6 +56,27 @@ public class ConfirmingMcpTool extends McpTool {
             return Mono.just(PermissionDecision.ask("该操作执行前需要确认"));
         }
         return Mono.just(PermissionDecision.allow("无需确认"));
+    }
+
+    /**
+     * 调用 MCP；失败转为 ERROR / INTERRUPTED，避免单工具异常打断整轮 ReAct。
+     *
+     * @param param 工具调用参数
+     * @return 工具结果
+     */
+    @Override
+    public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+        return super.callAsync(param)
+                .onErrorResume(err -> {
+                    // 取消/中断优先标 INTERRUPTED，其余 ERROR，ReAct 可继续
+                    if (err instanceof InterruptedException
+                            || (err.getMessage() != null && err.getMessage().toLowerCase().contains("interrupt"))) {
+                        return Mono.just(ToolResultBlock.error("tool interrupted")
+                                .withState(ToolResultState.INTERRUPTED));
+                    }
+                    String msg = err.getMessage() == null ? "MCP call failed" : err.getMessage();
+                    return Mono.just(ToolResultBlock.error(msg));
+                });
     }
 
     /**

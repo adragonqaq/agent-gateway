@@ -86,7 +86,14 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
         }
 
         if (error.get() != null) {
-            events.accept(new AgentEvent("error", error.get().getMessage()));
+            // 取消/失败也尽量落盘，下一轮 enablePendingToolRecovery 才能收口挂起工具
+            try {
+                agent.saveAgentState(tenant.tenantId(), conversationId);
+            } catch (Exception ignored) {
+            }
+            stateSaver.accept("{\"interrupted\":true,\"prior\":"
+                    + (priorState == null ? "\"\"" : priorState) + "}");
+            events.accept(new AgentEvent("error", error.get().getMessage() == null ? "error" : error.get().getMessage()));
             events.accept(new AgentEvent("done", "error"));
             throw new IllegalStateException("AgentScope run failed", error.get());
         }

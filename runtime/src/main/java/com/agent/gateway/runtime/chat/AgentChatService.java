@@ -107,16 +107,23 @@ public class AgentChatService {
         String prior = stateStore.load(tenant.tenantId(), conversationId).orElse("{}");
         AtomicBoolean awaitingConfirm = new AtomicBoolean(false);
         try {
-            agentExecutor.run(tenant, taskId, conversationId, message, catalog, prior, event -> {
-                if (cancelled.get()) {
-                    // 已取消则丢弃后续事件，避免客户端在 cancel 后再收到 answer
-                    return;
+            try {
+                agentExecutor.run(tenant, taskId, conversationId, message, catalog, prior, event -> {
+                    if (cancelled.get()) {
+                        // 已取消则丢弃后续事件，避免客户端在 cancel 后再收到 answer
+                        return;
+                    }
+                    if ("confirm".equals(event.type())) {
+                        awaitingConfirm.set(true);
+                    }
+                    sink.accept(event);
+                }, payload -> stateStore.save(tenant.tenantId(), conversationId, payload));
+            } catch (RuntimeException ex) {
+                if (!cancelled.get()) {
+                    throw ex;
                 }
-                if ("confirm".equals(event.type())) {
-                    awaitingConfirm.set(true);
-                }
-                sink.accept(event);
-            }, payload -> stateStore.save(tenant.tenantId(), conversationId, payload));
+                // interrupt 后执行器可能抛错：仍按取消收口，不把异常冒泡给 SSE 线程
+            }
             if (cancelled.get()) {
                 sink.accept(new AgentEvent("cancel", "cancelled"));
                 auditService.record(tenant.tenantId(), "CHAT_CANCEL", taskId, "{}");
