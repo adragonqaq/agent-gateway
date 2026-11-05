@@ -1,6 +1,7 @@
 package com.agent.gateway.runtime;
 
 import com.agent.gateway.tenant.TenantIds;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -22,7 +23,18 @@ public class ConfirmGate {
     private final Duration timeout;
 
     /**
-     * 生产环境构造：UTC 时钟，默认 300 秒超时。
+     * 生产环境构造：UTC 时钟，超时取自 {@code gateway.confirm.timeout-seconds}。
+     *
+     * @param jdbc JDBC 模板
+     * @param properties 确认闸门配置
+     */
+    @Autowired
+    public ConfirmGate(JdbcTemplate jdbc, com.agent.gateway.runtime.config.GatewayConfirmProperties properties) {
+        this(jdbc, Clock.systemUTC(), Duration.ofSeconds(Math.max(1, properties.getTimeoutSeconds())));
+    }
+
+    /**
+     * 仅 JDBC 的兼容构造（测试 / 无 Spring 配置时默认 300 秒）。
      *
      * @param jdbc JDBC 模板
      */
@@ -37,7 +49,7 @@ public class ConfirmGate {
      * @param clock 时钟
      * @param timeout 确认超时时长
      */
-    ConfirmGate(JdbcTemplate jdbc, Clock clock, Duration timeout) {
+    public ConfirmGate(JdbcTemplate jdbc, Clock clock, Duration timeout) {
         this.jdbc = jdbc;
         this.clock = clock;
         this.timeout = timeout;
@@ -126,6 +138,40 @@ public class ConfirmGate {
                 """,
                 (rs, i) -> mapRow(rs),
                 tid, taskId);
+    }
+
+    /**
+     * 批量将已到期的 PENDING 确认单标记为 EXPIRED。
+     * <p>供定时扫描使用；惰性 {@link #get} 仍会单独过期单条。
+     *
+     * @param limit 本批最大条数
+     * @return 本批新过期的确认单
+     */
+    public List<PendingConfirmation> expireDue(int limit) {
+        int n = Math.max(1, Math.min(limit, 500));
+        Instant now = clock.instant();
+        List<PendingConfirmation> due = jdbc.query("""
+                SELECT id, tenant_id, task_id, conversation_id, tool_name, args_json, status, expires_at
+                FROM gw_confirm
+                WHERE status = ? AND expires_at < ?
+                ORDER BY expires_at
+                LIMIT ?
+                """,
+                (rs, i) -> mapRow(rs),
+                ConfirmDecision.PENDING.name(),
+                java.sql.Timestamp.from(now),
+                n);
+        List<PendingConfirmation> expired = new java.util.ArrayList<>();
+        for (PendingConfirmation row : due) {
+            // 条件更新：仅 PENDING 才推进，避免与用户确认并发时覆盖 CONFIRMED
+            int updated = jdbc.update(
+                    "UPDATE gw_confirm SET status = ? WHERE id = ? AND tenant_id = ? AND status = ?",
+                    ConfirmDecision.EXPIRED.name(), row.id(), row.tenantId(), ConfirmDecision.PENDING.name());
+            if (updated > 0) {
+                expired.add(withStatus(row, ConfirmDecision.EXPIRED));
+            }
+        }
+        return expired;
     }
 
     /**

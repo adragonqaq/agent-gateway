@@ -2,12 +2,14 @@ package com.agent.gateway;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Agent Gateway 启动入口。
- * 扫描 {@code com.agent.gateway} 包以装配 API、运行时与租户等模块。
+ * 扫描 {@code com.agent.gateway} 包以装配 API、运行时与租户等模块；开启定时任务（确认过期扫描）。
  */
 @SpringBootApplication(scanBasePackages = "com.agent.gateway")
+@EnableScheduling
 public class GatewayApplication {
 
     /**

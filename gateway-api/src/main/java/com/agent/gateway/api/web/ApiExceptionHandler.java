@@ -1,5 +1,6 @@
 package com.agent.gateway.api.web;
 
+import com.agent.gateway.runtime.ExpiredConfirmationException;
 import com.agent.gateway.runtime.NotFoundException;
 import com.agent.gateway.tenant.UnauthorizedException;
 import org.springframework.http.HttpStatus;
@@ -36,6 +37,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<Map<String, String>> notFound(NotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", ex.getMessage()));
+    }
+
+    /**
+     * 确认单过期 → 410。
+     *
+     * @param ex 过期异常
+     * @return 错误响应
+     */
+    @ExceptionHandler(ExpiredConfirmationException.class)
+    public ResponseEntity<Map<String, String>> expired(ExpiredConfirmationException ex) {
+        return ResponseEntity.status(HttpStatus.GONE).body(Map.of("error", ex.getMessage()));
     }
 
     /**

@@ -5,6 +5,7 @@ import com.agent.gateway.observe.AuditService;
 import com.agent.gateway.observe.UsageService;
 import com.agent.gateway.runtime.ConfirmDecision;
 import com.agent.gateway.runtime.ConfirmGate;
+import com.agent.gateway.runtime.ExpiredConfirmationException;
 import com.agent.gateway.runtime.PendingConfirmation;
 import com.agent.gateway.runtime.RunGate;
 import com.agent.gateway.tenant.TenantContext;
@@ -154,7 +155,10 @@ public class AgentChatService {
             Consumer<AgentEvent> sink) {
         PendingConfirmation anchor = confirmGate.get(tenant.tenantId(), confirmId);
         if (anchor.status() == ConfirmDecision.EXPIRED) {
-            throw new IllegalStateException("confirmation expired");
+            // 惰性过期路径也落审计，与定时扫描互补（幂等：多次读已是 EXPIRED 仍记一次请求侧拒绝）
+            auditService.record(tenant.tenantId(), "CONFIRM_EXPIRED", confirmId,
+                    "{\"taskId\":\"" + anchor.taskId() + "\",\"source\":\"resume\"}");
+            throw new ExpiredConfirmationException("confirmation expired");
         }
         ConfirmDecision decision = approved ? ConfirmDecision.CONFIRMED : ConfirmDecision.DENIED;
         List<PendingConfirmation> settled = confirmGate.decideAllPendingForTask(

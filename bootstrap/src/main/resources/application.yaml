@@ -54,8 +54,14 @@ gateway:
     # 每租户默认最大并发（也可由租户表 max_concurrent 覆盖业务侧）
     max-concurrent-per-tenant: 5
   confirm:
-    # 确认单默认超时秒数；超时后惰性标记 EXPIRED
+    # 确认单默认超时秒数；超时后标记 EXPIRED（惰性读取 + 定时扫描）
     timeout-seconds: 300
+    # 是否启用定时过期扫描
+    sweep-enabled: true
+    # 扫描间隔毫秒
+    sweep-interval-ms: 30000
+    # 每轮最多过期条数
+    sweep-batch-size: 100
   bootstrap:
     # 非空则启动时种子平台 ADMIN Key（明文来自该环境变量）
     admin-api-key: ${GATEWAY_ADMIN_API_KEY:}

@@ -54,4 +54,16 @@ class ConfirmGateTest {
         String id = gate.suspend("tA", "task1", "conv1", "delete_order", "{}");
         assertThrows(NotFoundException.class, () -> gate.confirm("tB", id));
     }
+
+    @Test
+    void expireDueMarksPendingRows() {
+        ConfirmGate gate = new ConfirmGate(jdbc, clock, Duration.ofSeconds(10));
+        String id = gate.suspend("tA", "task1", "conv1", "delete_order", "{}");
+        now.set(Instant.parse("2026-01-01T00:01:00Z"));
+        var expired = gate.expireDue(10);
+        assertEquals(1, expired.size());
+        assertEquals(id, expired.get(0).id());
+        assertEquals(ConfirmDecision.EXPIRED, expired.get(0).status());
+        assertEquals(ConfirmDecision.EXPIRED, gate.get("tA", id).status());
+    }
 }
