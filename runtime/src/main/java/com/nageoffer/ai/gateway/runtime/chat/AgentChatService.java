@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
 @Service
 public class AgentChatService {
@@ -23,7 +22,7 @@ public class AgentChatService {
     private final TenantToolCatalog toolCatalog;
     private final SessionStateStore stateStore;
     private final AgentExecutor agentExecutor;
-    private final ReActAgentProvider agentProvider;
+    private final CatalogFingerprintTracker fingerprintTracker;
     private final AuditService auditService;
     private final UsageService usageService;
     private final Map<String, String> taskOwners = new ConcurrentHashMap<>();
@@ -33,14 +32,14 @@ public class AgentChatService {
             TenantToolCatalog toolCatalog,
             SessionStateStore stateStore,
             AgentExecutor agentExecutor,
-            ReActAgentProvider agentProvider,
+            CatalogFingerprintTracker fingerprintTracker,
             AuditService auditService,
             UsageService usageService) {
         this.runGate = runGate;
         this.toolCatalog = toolCatalog;
         this.stateStore = stateStore;
         this.agentExecutor = agentExecutor;
-        this.agentProvider = agentProvider;
+        this.fingerprintTracker = fingerprintTracker;
         this.auditService = auditService;
         this.usageService = usageService;
     }
@@ -53,7 +52,7 @@ public class AgentChatService {
         }
         taskOwners.put(taskId, tenant.tenantId());
         ResolvedCatalog catalog = toolCatalog.resolve(tenant.tenantId());
-        agentProvider.getOrRebuild(tenant.tenantId(), catalog);
+        fingerprintTracker.getOrRebuild(tenant.tenantId(), catalog);
         String prior = stateStore.load(tenant.tenantId(), conversationId).orElse("{}");
         List<AgentEvent> buffer = new ArrayList<>();
         try {

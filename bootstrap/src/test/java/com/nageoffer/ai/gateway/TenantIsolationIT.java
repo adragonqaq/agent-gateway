@@ -8,7 +8,7 @@ import com.nageoffer.ai.gateway.runtime.InMemoryRunGate;
 import com.nageoffer.ai.gateway.runtime.NotFoundException;
 import com.nageoffer.ai.gateway.runtime.chat.AgentChatService;
 import com.nageoffer.ai.gateway.runtime.chat.EchoAgentExecutor;
-import com.nageoffer.ai.gateway.runtime.chat.ReActAgentProvider;
+import com.nageoffer.ai.gateway.runtime.chat.CatalogFingerprintTracker;
 import com.nageoffer.ai.gateway.tenant.ApiKeyHasher;
 import com.nageoffer.ai.gateway.tenant.ApiKeyRecord;
 import com.nageoffer.ai.gateway.tenant.JdbcTenantRepository;
@@ -59,7 +59,7 @@ class TenantIsolationIT {
         mcpRegistry = new JdbcMcpRegistry(jdbc);
         TenantToolCatalog catalog = new TenantToolCatalog(mcpRegistry, new PolicyEngine(jdbc));
         chatService = new AgentChatService(
-                runGate, catalog, stateStore, new EchoAgentExecutor(), new ReActAgentProvider(),
+                runGate, catalog, stateStore, new EchoAgentExecutor(new CatalogFingerprintTracker()), new CatalogFingerprintTracker(),
                 new AuditService(jdbc), new UsageService(jdbc));
 
         tenantRepo.insertTenant(new TenantRecord("tA", "A", "ACTIVE", "standard", "platform", 5));

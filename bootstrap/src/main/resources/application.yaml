@@ -15,7 +15,16 @@ spring:
 
 gateway:
   agent:
-    mode: echo
+    mode: ${GATEWAY_AGENT_MODE:echo}
+    persona: You are Agent Gateway, a helpful multi-tenant tool-using assistant.
+    max-iters: 8
+    max-retries: 2
+    chat:
+      api-key: ${GATEWAY_LLM_API_KEY:}
+      base-url: ${GATEWAY_LLM_BASE_URL:https://api.openai.com}
+      endpoint-path: ${GATEWAY_LLM_ENDPOINT:/v1/chat/completions}
+      model: ${GATEWAY_LLM_MODEL:gpt-4o-mini}
+      stream: true
   secret:
     master-key: ${GATEWAY_SECRET_MASTER_KEY:0123456789abcdef}
   run-gate:
