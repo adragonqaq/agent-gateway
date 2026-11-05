@@ -1,5 +1,8 @@
 # Agent Gateway
 
+Java packages live under `com.agent.gateway` (Maven `groupId`: `com.agent`).
+
+
 Multi-tenant **ReAct Agent** service focused on **MCP tools** — not RAG.
 
 Inspired by Ragent’s Agent module (middleware, confirm gate, run gate, SSE), but this is a **standalone** repository.

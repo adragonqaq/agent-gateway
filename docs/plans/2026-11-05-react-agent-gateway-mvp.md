@@ -38,7 +38,7 @@ agent-gateway/
 └── bootstrap/                       # Spring Boot main + application.yaml
 ```
 
-Package root: `com.nageoffer.ai.gateway`.
+Package root: `com.agent.gateway`.
 
 Dependency direction (no cycles):
 
@@ -87,7 +87,7 @@ target/
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.nageoffer.ai</groupId>
+    <groupId>com.agent</groupId>
     <artifactId>agent-gateway</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
@@ -145,32 +145,32 @@ target/
                 <version>${redisson.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.nageoffer.ai</groupId>
+                <groupId>com.agent</groupId>
                 <artifactId>tenant</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.nageoffer.ai</groupId>
+                <groupId>com.agent</groupId>
                 <artifactId>tools</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.nageoffer.ai</groupId>
+                <groupId>com.agent</groupId>
                 <artifactId>memory</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.nageoffer.ai</groupId>
+                <groupId>com.agent</groupId>
                 <artifactId>observe</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.nageoffer.ai</groupId>
+                <groupId>com.agent</groupId>
                 <artifactId>runtime</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.nageoffer.ai</groupId>
+                <groupId>com.agent</groupId>
                 <artifactId>gateway-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -227,7 +227,7 @@ EOF
 
 **Files:**
 - Create: `tenant/pom.xml`, `tools/pom.xml`, `memory/pom.xml`, `observe/pom.xml`, `runtime/pom.xml`, `gateway-api/pom.xml`, `bootstrap/pom.xml`
-- Create: `bootstrap/src/main/java/com/nageoffer/ai/gateway/GatewayApplication.java`
+- Create: `bootstrap/src/main/java/com/agent/gateway/GatewayApplication.java`
 - Create: `bootstrap/src/main/resources/application.yaml`
 
 - [ ] **Step 1: Create each module `pom.xml`**
@@ -241,7 +241,7 @@ Minimal pattern (example `tenant/pom.xml`; others follow with their deps):
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.nageoffer.ai</groupId>
+        <groupId>com.agent</groupId>
         <artifactId>agent-gateway</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
@@ -280,12 +280,12 @@ Wiring notes:
 - [ ] **Step 2: Add bootstrap main class**
 
 ```java
-package com.nageoffer.ai.gateway;
+package com.agent.gateway;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication(scanBasePackages = "com.nageoffer.ai.gateway")
+@SpringBootApplication(scanBasePackages = "com.agent.gateway")
 public class GatewayApplication {
     public static void main(String[] args) {
         SpringApplication.run(GatewayApplication.class, args);
@@ -339,15 +339,15 @@ EOF
 ### Task 3: Tenant context + repository isolation guard
 
 **Files:**
-- Create: `tenant/src/main/java/com/nageoffer/ai/gateway/tenant/TenantContext.java`
-- Create: `tenant/src/main/java/com/nageoffer/ai/gateway/tenant/TenantIds.java`
-- Create: `tenant/src/main/java/com/nageoffer/ai/gateway/tenant/MissingTenantException.java`
-- Create: `tenant/src/test/java/com/nageoffer/ai/gateway/tenant/TenantIdsTest.java`
+- Create: `tenant/src/main/java/com/agent/gateway/tenant/TenantContext.java`
+- Create: `tenant/src/main/java/com/agent/gateway/tenant/TenantIds.java`
+- Create: `tenant/src/main/java/com/agent/gateway/tenant/MissingTenantException.java`
+- Create: `tenant/src/test/java/com/agent/gateway/tenant/TenantIdsTest.java`
 
 - [ ] **Step 1: Write failing test**
 
 ```java
-package com.nageoffer.ai.gateway.tenant;
+package com.agent.gateway.tenant;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -374,7 +374,7 @@ mvn -pl tenant -Dtest=TenantIdsTest test
 - [ ] **Step 3: Implement**
 
 ```java
-package com.nageoffer.ai.gateway.tenant;
+package com.agent.gateway.tenant;
 
 public final class TenantIds {
     private TenantIds() {}
@@ -388,7 +388,7 @@ public final class TenantIds {
 ```
 
 ```java
-package com.nageoffer.ai.gateway.tenant;
+package com.agent.gateway.tenant;
 
 public class MissingTenantException extends RuntimeException {
     public MissingTenantException(String message) { super(message); }
@@ -396,7 +396,7 @@ public class MissingTenantException extends RuntimeException {
 ```
 
 ```java
-package com.nageoffer.ai.gateway.tenant;
+package com.agent.gateway.tenant;
 
 public record TenantContext(
         String tenantId,
@@ -429,11 +429,11 @@ EOF
 
 **Files:**
 - Create: `bootstrap/src/main/resources/db/schema.sql`
-- Create: `tenant/src/main/java/com/nageoffer/ai/gateway/tenant/TenantRecord.java`
-- Create: `tenant/src/main/java/com/nageoffer/ai/gateway/tenant/ApiKeyRecord.java`
-- Create: `tenant/src/main/java/com/nageoffer/ai/gateway/tenant/TenantRepository.java`
-- Create: `tenant/src/main/java/com/nageoffer/ai/gateway/tenant/JdbcTenantRepository.java`
-- Create: `tenant/src/test/java/com/nageoffer/ai/gateway/tenant/JdbcTenantRepositoryTest.java`
+- Create: `tenant/src/main/java/com/agent/gateway/tenant/TenantRecord.java`
+- Create: `tenant/src/main/java/com/agent/gateway/tenant/ApiKeyRecord.java`
+- Create: `tenant/src/main/java/com/agent/gateway/tenant/TenantRepository.java`
+- Create: `tenant/src/main/java/com/agent/gateway/tenant/JdbcTenantRepository.java`
+- Create: `tenant/src/test/java/com/agent/gateway/tenant/JdbcTenantRepositoryTest.java`
 
 - [ ] **Step 1: Write schema**
 
@@ -497,11 +497,11 @@ EOF
 ### Task 5: API key resolver + auth filter
 
 **Files:**
-- Create: `tenant/src/main/java/com/nageoffer/ai/gateway/tenant/ApiKeyHasher.java`
-- Create: `tenant/src/main/java/com/nageoffer/ai/gateway/tenant/TenantResolver.java`
-- Create: `gateway-api/src/main/java/com/nageoffer/ai/gateway/api/auth/ApiKeyAuthFilter.java`
-- Create: `gateway-api/src/main/java/com/nageoffer/ai/gateway/api/auth/TenantContextHolder.java`
-- Test: `tenant/src/test/java/com/nageoffer/ai/gateway/tenant/TenantResolverTest.java`
+- Create: `tenant/src/main/java/com/agent/gateway/tenant/ApiKeyHasher.java`
+- Create: `tenant/src/main/java/com/agent/gateway/tenant/TenantResolver.java`
+- Create: `gateway-api/src/main/java/com/agent/gateway/api/auth/ApiKeyAuthFilter.java`
+- Create: `gateway-api/src/main/java/com/agent/gateway/api/auth/TenantContextHolder.java`
+- Test: `tenant/src/test/java/com/agent/gateway/tenant/TenantResolverTest.java`
 
 - [ ] **Step 1: Failing test — unknown key rejected**
 
