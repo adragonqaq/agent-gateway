@@ -1,6 +1,7 @@
 package com.agent.gateway.runtime;
 
 import com.agent.gateway.tenant.TenantIds;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -12,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>所属模块：runtime。按租户维护正在运行的 taskId 集合，适合单实例部署。
  */
 @Component
+@ConditionalOnProperty(name = "gateway.run-gate.type", havingValue = "memory", matchIfMissing = true)
 public class InMemoryRunGate implements RunGate {
 
     private final Map<String, Set<String>> running = new ConcurrentHashMap<>();

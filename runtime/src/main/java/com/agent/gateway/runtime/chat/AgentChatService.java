@@ -17,10 +17,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * 租户聊天运行编排服务。
- * <p>所属模块：runtime。占并发槽、解析工具目录并调用执行器；支持确认后续跑。
+ * <p>所属模块：runtime。占并发槽、解析工具目录并调用执行器；支持边跑边推事件与确认续跑。
  */
 @Service
 public class AgentChatService {
@@ -58,53 +60,100 @@ public class AgentChatService {
     }
 
     /**
-     * 启动一轮聊天：占并发槽、解析目录、执行 Agent，结束后释放槽位。
+     * 同步缓冲一整轮事件（便于单测断言）。
      */
     public ChatRun start(TenantContext tenant, String conversationId, String message, int maxConcurrent) {
+        List<AgentEvent> buffer = new ArrayList<>();
+        String taskId = startStreaming(tenant, conversationId, message, maxConcurrent, id -> {
+        }, buffer::add);
+        return new ChatRun(taskId, List.copyOf(buffer));
+    }
+
+    /**
+     * 边执行边把事件推给 {@code sink}，适合 SSE 流式输出。
+     * <p>占用槽位成功后立刻回调 {@code onTaskReady}，便于客户端先收到 meta.taskId；
+     * 调用方应在独立线程中调用，以便 HTTP 线程立刻返回 {@code SseEmitter}。
+     *
+     * @param tenant 租户上下文
+     * @param conversationId 会话 ID
+     * @param message 用户消息
+     * @param maxConcurrent 并发上限
+     * @param onTaskReady 任务 ID 就绪回调（在执行 Agent 之前）
+     * @param sink 事件消费者
+     * @return 本轮 taskId
+     */
+    public String startStreaming(
+            TenantContext tenant,
+            String conversationId,
+            String message,
+            int maxConcurrent,
+            Consumer<String> onTaskReady,
+            Consumer<AgentEvent> sink) {
         String taskId = "task_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         RunGate.AcquireResult acquired = runGate.tryAcquire(tenant.tenantId(), taskId, maxConcurrent);
         if (!acquired.acquired()) {
             throw new IllegalStateException(acquired.reason());
         }
         taskOwners.put(taskId, tenant.tenantId());
+        // 先告知 taskId，客户端才能在流中途发起 cancel
+        onTaskReady.accept(taskId);
         ResolvedCatalog catalog = toolCatalog.resolve(tenant.tenantId());
         fingerprintTracker.getOrRebuild(tenant.tenantId(), catalog);
         String prior = stateStore.load(tenant.tenantId(), conversationId).orElse("{}");
-        List<AgentEvent> buffer = new ArrayList<>();
+        AtomicBoolean awaitingConfirm = new AtomicBoolean(false);
         try {
-            agentExecutor.run(tenant, taskId, conversationId, message, catalog, prior, buffer::add, payload ->
-                    stateStore.save(tenant.tenantId(), conversationId, payload));
-            boolean awaiting = buffer.stream().anyMatch(e -> "confirm".equals(e.type()));
-            if (!awaiting) {
+            agentExecutor.run(tenant, taskId, conversationId, message, catalog, prior, event -> {
+                if ("confirm".equals(event.type())) {
+                    awaitingConfirm.set(true);
+                }
+                // 立即下推，不等整轮结束
+                sink.accept(event);
+            }, payload -> stateStore.save(tenant.tenantId(), conversationId, payload));
+            if (awaitingConfirm.get()) {
+                auditService.record(tenant.tenantId(), "CHAT_AWAITING_CONFIRM", taskId, "{}");
+            } else {
                 usageService.record(tenant.tenantId(), taskId, "runs", 1);
                 auditService.record(tenant.tenantId(), "CHAT_COMPLETE", taskId, "{}");
-            } else {
-                // 挂起确认时保留任务归属，便于审计；并发槽仍释放，避免卡死额度
-                auditService.record(tenant.tenantId(), "CHAT_AWAITING_CONFIRM", taskId, "{}");
             }
         } finally {
             runGate.release(tenant.tenantId(), taskId);
         }
+        return taskId;
+    }
+
+    /**
+     * 同步缓冲确认续跑事件（便于单测）。
+     */
+    public ChatRun resumeAfterConfirm(TenantContext tenant, String confirmId, boolean approved, int maxConcurrent) {
+        List<AgentEvent> buffer = new ArrayList<>();
+        String taskId = resumeAfterConfirmStreaming(tenant, confirmId, approved, maxConcurrent, id -> {
+        }, buffer::add);
         return new ChatRun(taskId, List.copyOf(buffer));
     }
 
     /**
-     * 对确认单做批准或拒绝，并续跑 Agent。
-     * <p>同一 taskId 下其余 PENDING 确认单会一并结算，避免半放行。
+     * 结算确认单后边续跑边推事件。
      *
      * @param tenant 租户上下文
      * @param confirmId 确认单 ID
-     * @param approved true=批准，false=拒绝
-     * @param maxConcurrent 续跑占用的并发上限
-     * @return 续跑任务与事件
+     * @param approved 是否批准
+     * @param maxConcurrent 续跑并发上限
+     * @param onTaskReady 续跑 taskId 就绪回调
+     * @param sink 事件消费者
+     * @return 续跑 taskId
      */
-    public ChatRun resumeAfterConfirm(TenantContext tenant, String confirmId, boolean approved, int maxConcurrent) {
+    public String resumeAfterConfirmStreaming(
+            TenantContext tenant,
+            String confirmId,
+            boolean approved,
+            int maxConcurrent,
+            Consumer<String> onTaskReady,
+            Consumer<AgentEvent> sink) {
         PendingConfirmation anchor = confirmGate.get(tenant.tenantId(), confirmId);
         if (anchor.status() == ConfirmDecision.EXPIRED) {
             throw new IllegalStateException("confirmation expired");
         }
         ConfirmDecision decision = approved ? ConfirmDecision.CONFIRMED : ConfirmDecision.DENIED;
-        // 整卡结算同一 task 下的 PENDING，与前端一张确认卡语义一致
         List<PendingConfirmation> settled = confirmGate.decideAllPendingForTask(
                 tenant.tenantId(), anchor.taskId(), decision);
         auditService.record(tenant.tenantId(),
@@ -118,24 +167,29 @@ public class AgentChatService {
             throw new IllegalStateException(acquired.reason());
         }
         taskOwners.put(resumeTaskId, tenant.tenantId());
+        onTaskReady.accept(resumeTaskId);
         ResolvedCatalog catalog = toolCatalog.resolve(tenant.tenantId());
-        List<AgentEvent> buffer = new ArrayList<>();
         String conversationId = anchor.conversationId() == null ? "" : anchor.conversationId();
+        AtomicBoolean awaitingConfirm = new AtomicBoolean(false);
         try {
-            agentExecutor.resumeConfirm(tenant, resumeTaskId, settled, approved, catalog, buffer::add, payload -> {
+            agentExecutor.resumeConfirm(tenant, resumeTaskId, settled, approved, catalog, event -> {
+                if ("confirm".equals(event.type())) {
+                    awaitingConfirm.set(true);
+                }
+                sink.accept(event);
+            }, payload -> {
                 if (!conversationId.isBlank()) {
                     stateStore.save(tenant.tenantId(), conversationId, payload);
                 }
             });
-            boolean awaiting = buffer.stream().anyMatch(e -> "confirm".equals(e.type()));
-            if (!awaiting) {
+            if (!awaitingConfirm.get()) {
                 usageService.record(tenant.tenantId(), resumeTaskId, "runs", 1);
                 auditService.record(tenant.tenantId(), "CHAT_CONFIRM_RESUME_COMPLETE", resumeTaskId, "{}");
             }
         } finally {
             runGate.release(tenant.tenantId(), resumeTaskId);
         }
-        return new ChatRun(resumeTaskId, List.copyOf(buffer));
+        return resumeTaskId;
     }
 
     /**
@@ -152,10 +206,10 @@ public class AgentChatService {
     }
 
     /**
-     * 一轮聊天的运行结果。
+     * 一轮聊天的缓冲结果（测试/兼容用）。
      *
      * @param taskId 任务 ID
-     * @param events 本轮产生的事件
+     * @param events 本轮事件
      */
     public record ChatRun(String taskId, List<AgentEvent> events) {
     }

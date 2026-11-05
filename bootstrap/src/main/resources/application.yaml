@@ -28,6 +28,8 @@ gateway:
   secret:
     master-key: ${GATEWAY_SECRET_MASTER_KEY:0123456789abcdef}
   run-gate:
+    type: ${GATEWAY_RUN_GATE_TYPE:memory}   # memory | redis
+    redis-address: ${GATEWAY_REDIS_ADDRESS:redis://127.0.0.1:6379}
     max-concurrent-per-tenant: 5
   confirm:
     timeout-seconds: 300

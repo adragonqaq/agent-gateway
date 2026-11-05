@@ -1,9 +1,10 @@
 package com.agent.gateway.api.chat;
 
 import com.agent.gateway.api.auth.TenantContextHolder;
+import com.agent.gateway.api.sse.SseSupport;
 import com.agent.gateway.runtime.chat.AgentChatService;
-import com.agent.gateway.runtime.chat.AgentEvent;
 import com.agent.gateway.tenant.TenantContext;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -12,53 +13,67 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executor;
 
 /**
  * 对话运行面 API。
- * 以 SSE 推送 Agent 事件，并支持按 taskId 取消运行。
+ * 以异步 SSE 边跑边推 Agent 事件，并支持按 taskId 取消运行。
  */
 @RestController
 @RequestMapping("/v1")
 public class ChatController {
 
     private final AgentChatService agentChatService;
+    private final Executor chatStreamExecutor;
 
     /**
      * @param agentChatService Agent 对话编排服务
+     * @param chatStreamExecutor 流式执行线程池
      */
-    public ChatController(AgentChatService agentChatService) {
+    public ChatController(
+            AgentChatService agentChatService,
+            @Qualifier("chatStreamExecutor") Executor chatStreamExecutor) {
         this.agentChatService = agentChatService;
+        this.chatStreamExecutor = chatStreamExecutor;
     }
 
     /**
-     * 发起一轮对话并以 SSE 流式返回事件。
+     * 发起一轮对话并以 SSE 流式返回事件（边跑边推）。
      *
-     * @param request 对话请求（会话 ID 与用户消息）
-     * @return SSE 发射器
-     * @throws IOException 发送 SSE 事件失败时抛出
+     * @param request 对话请求
+     * @return 立刻返回的 SSE 发射器
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@RequestBody ChatRequest request) throws IOException {
-        // TenantContextHolder：对话必须绑定调用方租户，隔离配额、工具策略与凭证
+    public SseEmitter chat(@RequestBody ChatRequest request) {
+        // 先取出租户：后台线程拿不到请求线程的 ThreadLocal
         TenantContext tenant = TenantContextHolder.require();
         String conversationId = request.conversationId() == null || request.conversationId().isBlank()
                 ? "conv_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)
                 : request.conversationId();
-        AgentChatService.ChatRun run = agentChatService.start(
-                tenant, conversationId, request.message(), 5);
-        SseEmitter emitter = new SseEmitter(60_000L);
-        // SSE emit：先推 meta（taskId/conversationId），客户端据此关联后续事件与取消
-        emitter.send(SseEmitter.event().name("meta").data(Map.of(
-                "taskId", run.taskId(),
-                "conversationId", conversationId)));
-        for (AgentEvent event : run.events()) {
-            // SSE emit：按事件类型原样推送，保持与运行时 AgentEvent 契约一致
-            emitter.send(SseEmitter.event().name(event.type()).data(event.data()));
-        }
-        emitter.complete();
+
+        SseEmitter emitter = new SseEmitter(300_000L);
+        Object lock = new Object();
+
+        // 立即返回 emitter，真正执行放到线程池，实现边跑边推
+        chatStreamExecutor.execute(() -> {
+            try {
+                agentChatService.startStreaming(
+                        tenant,
+                        conversationId,
+                        request.message(),
+                        5,
+                        taskId -> SseSupport.send(emitter, lock, "meta", Map.of(
+                                "taskId", taskId,
+                                "conversationId", conversationId)),
+                        event -> SseSupport.send(emitter, lock, event.type(), event.data()));
+                SseSupport.complete(emitter, lock);
+            } catch (Exception ex) {
+                SseSupport.send(emitter, lock, "error", ex.getMessage() == null ? "error" : ex.getMessage());
+                SseSupport.completeWithError(emitter, lock, ex);
+            }
+        });
         return emitter;
     }
 
@@ -70,9 +85,7 @@ public class ChatController {
      */
     @PostMapping("/runs/{taskId}/cancel")
     public Map<String, String> cancel(@PathVariable String taskId) {
-        // TenantContextHolder：取消必须带租户，防止跨租户打断他人任务
         TenantContext tenant = TenantContextHolder.require();
-        // cancel：通知运行时停止该 task，释放并发名额并中断进行中的工具调用
         agentChatService.cancel(tenant.tenantId(), taskId);
         return Map.of("status", "cancelled");
     }

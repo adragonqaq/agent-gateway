@@ -99,6 +99,7 @@
 docker compose up -d          # Postgres（Redis 可选；MVP RunGate 为内存实现）
 export GATEWAY_SECRET_MASTER_KEY=0123456789abcdef
 export GATEWAY_ADMIN_API_KEY=sk_admin_local_dev   # 可选：种子平台 ADMIN Key
+# 多实例时：export GATEWAY_RUN_GATE_TYPE=redis
 mvn -pl bootstrap -am spring-boot:run
 ```
 
@@ -128,7 +129,7 @@ export GATEWAY_LLM_MODEL=gpt-4o-mini
 | `POST /admin/tenants/{id}/mcp-servers` | 登记 / 更新 MCP Server（Header 加密入库） |
 | `POST /admin/tenants/{id}/mcp-servers/{serverId}/disable` | 停用 MCP Server |
 | `POST /admin/tenants/{id}/tool-policies` | 写入工具 ALLOW/DENY 与是否需确认 |
-| `POST /v1/chat` | SSE 对话（`thinking` / `tool` / `confirm` / `answer` / `done`） |
+| `POST /v1/chat` | SSE 对话（异步边跑边推）（`thinking` / `tool` / `confirm` / `answer` / `done`） |
 | `POST /v1/runs/{taskId}/cancel` | 取消任务（跨租户返回 404） |
 | `POST /v1/confirms/{id}/approve\|deny` | 人工确认 / 拒绝并 **SSE 续跑**（`id` 来自 `confirm` 事件的 `confirmId`） |
 
