@@ -4,9 +4,10 @@ import com.agent.gateway.api.auth.ApiKeyAuthFilter;
 import com.agent.gateway.api.web.ApiExceptionHandler;
 import com.agent.gateway.runtime.NotFoundException;
 import com.agent.gateway.runtime.chat.AgentChatService;
+import com.agent.gateway.tenant.AuthService;
+import com.agent.gateway.tenant.JwtService;
 import com.agent.gateway.tenant.TenantContext;
 import com.agent.gateway.tenant.TenantResolver;
-import com.agent.gateway.tenant.UnauthorizedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -16,7 +17,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.concurrent.Executor;
 
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -40,22 +40,19 @@ class ChatApiMvcTest {
         agentChatService = mock(AgentChatService.class);
         Executor sync = Runnable::run;
         mockMvc = MockMvcBuilders.standaloneSetup(new ChatController(agentChatService, sync))
-                .addFilters(new ApiKeyAuthFilter(tenantResolver))
+                .addFilters(new ApiKeyAuthFilter(
+                        tenantResolver, mock(JwtService.class), mock(AuthService.class)))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
 
     @Test
     void chatRequiresApiKey() throws Exception {
-        // doThrow 避免 when(resolve(null)) 在部分 Mockito 配置下误入真实实现
-        doThrow(new UnauthorizedException("API key is required"))
-                .when(tenantResolver).resolve(isNull());
-
         mockMvc.perform(post("/v1/chat")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"hi\"}"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("API key is required"));
+                .andExpect(jsonPath("$.error").value("API key or login required"));
     }
 
     @Test
@@ -63,14 +60,14 @@ class ChatApiMvcTest {
         TenantContext tenant = new TenantContext("tA", "keyA", "RUNTIME", "standard", "platform");
         when(tenantResolver.resolve("sk_a")).thenReturn(tenant);
         doThrow(new NotFoundException("task not found"))
-                .when(agentChatService).cancel(eq("tA"), eq("task_foreign"));
+                .when(agentChatService).cancel(eq(tenant), eq("task_foreign"));
 
         mockMvc.perform(post("/v1/runs/task_foreign/cancel")
                         .header("Authorization", "Bearer sk_a"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("task not found"));
 
-        verify(agentChatService).cancel("tA", "task_foreign");
+        verify(agentChatService).cancel(tenant, "task_foreign");
     }
 
     @Test
@@ -83,6 +80,6 @@ class ChatApiMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("cancelled"));
 
-        verify(agentChatService).cancel("tA", "task_1");
+        verify(agentChatService).cancel(tenant, "task_1");
     }
 }

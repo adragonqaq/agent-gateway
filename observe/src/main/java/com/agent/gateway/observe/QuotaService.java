@@ -61,6 +61,17 @@ public class QuotaService {
      * @return 摘要 map
      */
     public Map<String, Object> snapshot(String tenantId) {
+        return snapshot(tenantId, null);
+    }
+
+    /**
+     * 用量快照；{@code userId} 非空时附带 {@code myTokenUsed}。
+     *
+     * @param tenantId 租户
+     * @param userId 当前用户；可空
+     * @return 摘要 map
+     */
+    public Map<String, Object> snapshot(String tenantId, String userId) {
         String tid = TenantIds.require(tenantId);
         Long quota = tokenQuota(tid);
         long used = usageService.sumForTenant(tid, "total_tokens");
@@ -69,6 +80,9 @@ public class QuotaService {
         out.put("tokenUsed", used);
         out.put("tokenRemaining", quota == null ? null : Math.max(0L, quota - used));
         out.put("unlimited", quota == null);
+        if (userId != null && !userId.isBlank()) {
+            out.put("myTokenUsed", usageService.sumForUser(tid, userId, "total_tokens"));
+        }
         return out;
     }
 

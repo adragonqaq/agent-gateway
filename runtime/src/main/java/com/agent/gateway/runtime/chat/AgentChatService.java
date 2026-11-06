@@ -170,7 +170,7 @@ public class AgentChatService {
                 if (!cancelled.get()) {
                     bridge.finish(SpanStatus.ERROR);
                     spanRecorder.fail(tenant.tenantId(), runSpanId, "{\"error\":true}");
-                    auditService.record(tenant.tenantId(), "CHAT_ERROR", taskId, detail(traceId));
+                    auditService.record(tenant.tenantId(), tenant.userId(), "CHAT_ERROR", taskId, detail(traceId));
                     throw ex;
                 }
             }
@@ -178,16 +178,16 @@ public class AgentChatService {
                 sink.accept(new AgentEvent("cancel", "cancelled"));
                 bridge.finish(SpanStatus.CANCELLED);
                 spanRecorder.cancel(tenant.tenantId(), runSpanId);
-                auditService.record(tenant.tenantId(), "CHAT_CANCEL", taskId, detail(traceId));
+                auditService.record(tenant.tenantId(), tenant.userId(), "CHAT_CANCEL", taskId, detail(traceId));
             } else if (awaitingConfirm.get()) {
                 bridge.finish(SpanStatus.WAITING);
                 spanRecorder.end(tenant.tenantId(), runSpanId, SpanStatus.WAITING, null);
-                auditService.record(tenant.tenantId(), "CHAT_AWAITING_CONFIRM", taskId, detail(traceId));
+                auditService.record(tenant.tenantId(), tenant.userId(), "CHAT_AWAITING_CONFIRM", taskId, detail(traceId));
             } else {
                 bridge.finish(SpanStatus.OK);
                 spanRecorder.ok(tenant.tenantId(), runSpanId);
-                recordRunUsage(tenant.tenantId(), taskId, lastDonePayload.get());
-                auditService.record(tenant.tenantId(), "CHAT_COMPLETE", taskId, detail(traceId));
+                recordRunUsage(tenant.tenantId(), tenant.userId(), taskId, lastDonePayload.get());
+                auditService.record(tenant.tenantId(), tenant.userId(), "CHAT_COMPLETE", taskId, detail(traceId));
             }
         } finally {
             activeRuns.remove(taskId);
@@ -222,7 +222,7 @@ public class AgentChatService {
             Consumer<AgentEvent> sink) {
         PendingConfirmation anchor = confirmGate.get(tenant.tenantId(), confirmId);
         if (anchor.status() == ConfirmDecision.EXPIRED) {
-            auditService.record(tenant.tenantId(), "CONFIRM_EXPIRED", confirmId,
+            auditService.record(tenant.tenantId(), tenant.userId(), "CONFIRM_EXPIRED", confirmId,
                     "{\"taskId\":\"" + anchor.taskId() + "\",\"source\":\"resume\",\"traceId\":\""
                             + nullToEmpty(anchor.traceId()) + "\"}");
             throw new ExpiredConfirmationException("confirmation expired");
@@ -233,7 +233,7 @@ public class AgentChatService {
         ConfirmDecision decision = approved ? ConfirmDecision.CONFIRMED : ConfirmDecision.DENIED;
         List<PendingConfirmation> settled = confirmGate.decideAllPendingForTask(
                 tenant.tenantId(), anchor.taskId(), decision);
-        auditService.record(tenant.tenantId(),
+        auditService.record(tenant.tenantId(), tenant.userId(),
                 approved ? "CONFIRM_APPROVE" : "CONFIRM_DENY",
                 confirmId,
                 "{\"taskId\":\"" + anchor.taskId() + "\",\"traceId\":\"" + traceId + "\"}");
@@ -315,15 +315,15 @@ public class AgentChatService {
                 sink.accept(new AgentEvent("cancel", "cancelled"));
                 bridge.finish(SpanStatus.CANCELLED);
                 spanRecorder.cancel(tenant.tenantId(), runSpanId);
-                auditService.record(tenant.tenantId(), "CHAT_CANCEL", resumeTaskId, detail(traceId));
+                auditService.record(tenant.tenantId(), tenant.userId(), "CHAT_CANCEL", resumeTaskId, detail(traceId));
             } else if (awaitingConfirm.get()) {
                 bridge.finish(SpanStatus.WAITING);
                 spanRecorder.end(tenant.tenantId(), runSpanId, SpanStatus.WAITING, null);
             } else {
                 bridge.finish(SpanStatus.OK);
                 spanRecorder.ok(tenant.tenantId(), runSpanId);
-                recordRunUsage(tenant.tenantId(), resumeTaskId, lastDonePayload.get());
-                auditService.record(tenant.tenantId(), "CHAT_CONFIRM_RESUME_COMPLETE", resumeTaskId, detail(traceId));
+                recordRunUsage(tenant.tenantId(), tenant.userId(), resumeTaskId, lastDonePayload.get());
+                auditService.record(tenant.tenantId(), tenant.userId(), "CHAT_CONFIRM_RESUME_COMPLETE", resumeTaskId, detail(traceId));
             }
         } finally {
             activeRuns.remove(resumeTaskId);
@@ -335,16 +335,19 @@ public class AgentChatService {
 
     /**
      * 取消指定任务：触发 Agent interrupt，并释放并发槽。
+     *
+     * @param requester 发起取消的租户上下文（校验归属并记审计 user_id）
+     * @param taskId 任务 ID
      */
-    public void cancel(String requesterTenantId, String taskId) {
+    public void cancel(TenantContext requester, String taskId) {
         ActiveRunRegistry.ActiveRun run = activeRuns.find(taskId)
                 .orElseThrow(() -> new com.agent.gateway.runtime.NotFoundException("task not found"));
-        if (!run.tenantId().equals(requesterTenantId)) {
+        if (!run.tenantId().equals(requester.tenantId())) {
             throw new com.agent.gateway.runtime.NotFoundException("task not found");
         }
         run.requestCancel();
         String traceId = TraceContextHolder.get() == null ? "" : TraceContextHolder.get().traceId();
-        auditService.record(run.tenantId(), "CHAT_CANCEL_REQUESTED", taskId, detail(traceId));
+        auditService.record(run.tenantId(), requester.userId(), "CHAT_CANCEL_REQUESTED", taskId, detail(traceId));
     }
 
     /**
@@ -360,8 +363,8 @@ public class AgentChatService {
     /**
      * 记一次 runs，并在 done 带了 token 时写入 prompt/completion/total。
      */
-    private void recordRunUsage(String tenantId, String taskId, String donePayload) {
-        usageService.record(tenantId, taskId, "runs", 1);
+    private void recordRunUsage(String tenantId, String userId, String taskId, String donePayload) {
+        usageService.record(tenantId, userId, taskId, "runs", 1);
         if (donePayload == null || donePayload.isBlank()) {
             return;
         }
@@ -372,9 +375,9 @@ public class AgentChatService {
             }
             long prompt = Math.max(0L, node.get("promptTokens").asLong());
             long completion = Math.max(0L, node.get("completionTokens").asLong());
-            usageService.record(tenantId, taskId, "prompt_tokens", prompt);
-            usageService.record(tenantId, taskId, "completion_tokens", completion);
-            usageService.record(tenantId, taskId, "total_tokens", prompt + completion);
+            usageService.record(tenantId, userId, taskId, "prompt_tokens", prompt);
+            usageService.record(tenantId, userId, taskId, "completion_tokens", completion);
+            usageService.record(tenantId, userId, taskId, "total_tokens", prompt + completion);
         } catch (Exception ignored) {
             // done 解析失败不影响主流程
         }

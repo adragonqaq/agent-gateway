@@ -108,6 +108,7 @@ class TenantIsolationIT {
     void cancelForeignTaskNotFound() {
         TenantContext a = resolver.resolve("sk_tenant_a_key");
         var run = chatService.start(a, "c1", "hello", 5);
-        assertThrows(NotFoundException.class, () -> chatService.cancel("tB", run.taskId()));
+        assertThrows(NotFoundException.class, () ->
+                chatService.cancel(new TenantContext("tB", "keyB", "RUNTIME", "standard", "platform"), run.taskId()));
     }
 }

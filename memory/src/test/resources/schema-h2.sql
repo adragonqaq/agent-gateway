@@ -31,6 +31,40 @@ COMMENT ON COLUMN gw_tenant.token_quota IS '累计 total_tokens 上限；NULL �
 COMMENT ON COLUMN gw_tenant.created_at IS '创建时间';
 
 -- -----------------------------------------------------------------------------
+-- 用户：邮箱密码登录（对话台 / 控制台）
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gw_user (
+    id              VARCHAR(64) PRIMARY KEY,
+    email           VARCHAR(256) NOT NULL,
+    password_hash   VARCHAR(255) NOT NULL,
+    status          VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_gw_user_email ON gw_user(email);
+COMMENT ON TABLE gw_user IS '登录用户：邮箱 + 密码哈希';
+COMMENT ON COLUMN gw_user.id IS '用户 ID，如 usr_xxx';
+COMMENT ON COLUMN gw_user.email IS '登录邮箱（小写唯一）';
+COMMENT ON COLUMN gw_user.password_hash IS '密码哈希（BCrypt）';
+COMMENT ON COLUMN gw_user.status IS 'ACTIVE / DISABLED';
+COMMENT ON COLUMN gw_user.created_at IS '创建时间';
+
+-- -----------------------------------------------------------------------------
+-- 项目成员：用户 ↔ 租户（项目）
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gw_project_member (
+    tenant_id       VARCHAR(64) NOT NULL,
+    user_id         VARCHAR(64) NOT NULL,
+    role            VARCHAR(32) NOT NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, user_id),
+    CONSTRAINT fk_gw_member_tenant FOREIGN KEY (tenant_id) REFERENCES gw_tenant(id),
+    CONSTRAINT fk_gw_member_user FOREIGN KEY (user_id) REFERENCES gw_user(id)
+);
+CREATE INDEX IF NOT EXISTS idx_gw_member_user ON gw_project_member(user_id);
+COMMENT ON TABLE gw_project_member IS '项目成员：owner / member';
+COMMENT ON COLUMN gw_project_member.role IS 'owner | member';
+
+-- -----------------------------------------------------------------------------
 -- API Key：明文仅签发时返回一次，库中只存哈希与前缀
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS gw_api_key (
@@ -217,12 +251,15 @@ COMMENT ON COLUMN gw_trace_span.attrs_json IS '附加属性 JSON（工具参数�
 CREATE TABLE IF NOT EXISTS gw_audit_event (
     id              VARCHAR(64) PRIMARY KEY,
     tenant_id       VARCHAR(64) NOT NULL,
+    user_id         VARCHAR(64),
     event_type      VARCHAR(64) NOT NULL,
     ref_id          VARCHAR(64),
     detail_json     TEXT,
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_gw_audit_tenant ON gw_audit_event(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_gw_audit_user ON gw_audit_event(tenant_id, user_id);
+ALTER TABLE gw_audit_event ADD COLUMN IF NOT EXISTS user_id VARCHAR(64);
 COMMENT ON TABLE gw_audit_event IS '审计事件：确认、取消、对话完成等操作留痕';
 COMMENT ON COLUMN gw_audit_event.id IS '事件 ID';
 COMMENT ON COLUMN gw_audit_event.tenant_id IS '所属租户 ID';
@@ -237,12 +274,15 @@ COMMENT ON COLUMN gw_audit_event.created_at IS '创建时间';
 CREATE TABLE IF NOT EXISTS gw_usage_event (
     id              VARCHAR(64) PRIMARY KEY,
     tenant_id       VARCHAR(64) NOT NULL,
+    user_id         VARCHAR(64),
     task_id         VARCHAR(64),
     metric          VARCHAR(64) NOT NULL,
     amount          BIGINT NOT NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_gw_usage_tenant ON gw_usage_event(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_gw_usage_user ON gw_usage_event(tenant_id, user_id);
+ALTER TABLE gw_usage_event ADD COLUMN IF NOT EXISTS user_id VARCHAR(64);
 COMMENT ON TABLE gw_usage_event IS '用量事件：按租户累计 runs / tokens 等指标';
 COMMENT ON COLUMN gw_usage_event.id IS '事件 ID';
 COMMENT ON COLUMN gw_usage_event.tenant_id IS '所属租户 ID';

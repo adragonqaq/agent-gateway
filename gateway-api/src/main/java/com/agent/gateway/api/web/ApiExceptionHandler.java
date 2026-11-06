@@ -31,6 +31,14 @@ public class ApiExceptionHandler {
     }
 
     /**
+     * 参数非法（如注册校验）→ 400。
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", ex.getMessage()));
+    }
+
+    /**
      * 资源不存在 → 404。
      *
      * @param ex 未找到异常

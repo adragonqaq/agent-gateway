@@ -1,12 +1,9 @@
 package com.agent.gateway.api.admin;
 
-import com.agent.gateway.api.auth.TenantContextHolder;
 import com.agent.gateway.observe.QuotaService;
 import com.agent.gateway.tenant.IssuedApiKey;
 import com.agent.gateway.tenant.TenantAdminService;
-import com.agent.gateway.tenant.TenantContext;
 import com.agent.gateway.tenant.TenantRecord;
-import com.agent.gateway.tenant.UnauthorizedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -47,8 +44,7 @@ public class TenantAdminController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> createTenant(@RequestBody CreateTenantRequest request) {
-        // requireAdmin：开户属于高权限操作，禁止 RUNTIME Key 调用
-        requireAdmin();
+        AdminAccess.requirePlatformAdmin();
         TenantRecord tenant = tenantAdminService.createTenant(
                 request.name(),
                 request.modelTier(),
@@ -73,9 +69,18 @@ public class TenantAdminController {
     public Map<String, Object> issueKey(
             @PathVariable String tenantId,
             @RequestBody(required = false) IssueApiKeyRequest request) {
-        // requireAdmin：签发密钥等同授权凭证分发，必须限制为 ADMIN
-        requireAdmin();
-        String role = request == null ? "RUNTIME" : request.role();
+        AdminAccess.requireAdminOrProjectOwner(tenantId);
+        String role = request == null || request.role() == null || request.role().isBlank()
+                ? "RUNTIME"
+                : request.role().trim().toUpperCase();
+        if (!"ADMIN".equals(role) && !"RUNTIME".equals(role)) {
+            throw new IllegalArgumentException("role must be ADMIN or RUNTIME");
+        }
+        // 项目 owner（JWT）仅可签发 RUNTIME，避免自签平台 ADMIN
+        var ctx = com.agent.gateway.api.auth.TenantContextHolder.require();
+        if (ctx.isJwt() && "ADMIN".equals(role)) {
+            throw new IllegalArgumentException("project owner can only issue RUNTIME keys");
+        }
         IssuedApiKey issued = tenantAdminService.issueApiKey(tenantId, role);
         return Map.of(
                 "id", issued.id(),
@@ -95,7 +100,7 @@ public class TenantAdminController {
     public Map<String, Object> setQuota(
             @PathVariable String tenantId,
             @RequestBody Map<String, Object> body) {
-        requireAdmin();
+        AdminAccess.requireAdminOrProjectOwner(tenantId);
         Object raw = body == null ? null : body.get("tokenQuota");
         Long quota = null;
         if (raw instanceof Number n) {
@@ -108,16 +113,5 @@ public class TenantAdminController {
         }
         quotaService.setTokenQuota(tenantId, quota);
         return quotaService.snapshot(tenantId);
-    }
-
-    /**
-     * 从请求线程上下文取出租户并校验 ADMIN 角色。
-     */
-    private void requireAdmin() {
-        // TenantContextHolder：读取过滤器绑定的调用方身份，再校验是否为 ADMIN
-        TenantContext ctx = TenantContextHolder.require();
-        if (!"ADMIN".equalsIgnoreCase(ctx.role())) {
-            throw new UnauthorizedException("Admin role required");
-        }
     }
 }

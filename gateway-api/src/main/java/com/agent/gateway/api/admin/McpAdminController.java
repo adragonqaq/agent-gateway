@@ -1,10 +1,7 @@
 package com.agent.gateway.api.admin;
 
-import com.agent.gateway.api.auth.TenantContextHolder;
 import com.agent.gateway.tenant.PolicyEngine;
-import com.agent.gateway.tenant.TenantContext;
 import com.agent.gateway.tenant.ToolPolicy;
-import com.agent.gateway.tenant.UnauthorizedException;
 import com.agent.gateway.tools.McpAdminService;
 import com.agent.gateway.tools.McpServerRecord;
 import org.springframework.http.HttpStatus;
@@ -48,8 +45,7 @@ public class McpAdminController {
      */
     @GetMapping("/mcp-servers")
     public List<Map<String, Object>> listMcpServers(@PathVariable String tenantId) {
-        // requireAdmin：管理面必须先校验 ADMIN，避免 RUNTIME Key 枚举基础设施
-        requireAdmin();
+        AdminAccess.requireAdminOrProjectOwner(tenantId);
         return mcpAdminService.listActive(tenantId).stream().map(this::toView).toList();
     }
 
@@ -65,8 +61,7 @@ public class McpAdminController {
     public Map<String, Object> upsertMcpServer(
             @PathVariable String tenantId,
             @RequestBody UpsertMcpServerRequest request) {
-        // requireAdmin：写基础设施前先拒绝非 ADMIN，防止 RUNTIME Key 篡改连接配置
-        requireAdmin();
+        AdminAccess.requireAdminOrProjectOwner(tenantId);
         // 通过服务层加密 Header 并失效连接池，Controller 只做协议映射
         McpServerRecord saved = mcpAdminService.upsert(
                 tenantId,
@@ -89,8 +84,7 @@ public class McpAdminController {
     public Map<String, Object> disableMcpServer(
             @PathVariable String tenantId,
             @PathVariable String serverId) {
-        // requireAdmin：停用会影响运行时工具发现，必须限制为 ADMIN
-        requireAdmin();
+        AdminAccess.requireAdminOrProjectOwner(tenantId);
         return toView(mcpAdminService.disable(tenantId, serverId));
     }
 
@@ -106,8 +100,7 @@ public class McpAdminController {
     public Map<String, Object> upsertToolPolicy(
             @PathVariable String tenantId,
             @RequestBody UpsertToolPolicyRequest request) {
-        // requireAdmin：策略决定工具是否可执行/需确认，仅 ADMIN 可改
-        requireAdmin();
+        AdminAccess.requireAdminOrProjectOwner(tenantId);
         if (request.toolName() == null || request.toolName().isBlank()) {
             throw new IllegalArgumentException("toolName required");
         }
@@ -139,14 +132,4 @@ public class McpAdminController {
         return view;
     }
 
-    /**
-     * 从请求线程上下文取出租户并校验 ADMIN 角色。
-     */
-    private void requireAdmin() {
-        // TenantContextHolder：由 ApiKeyAuthFilter 绑定本请求租户与角色，此处读取以做授权判定
-        TenantContext ctx = TenantContextHolder.require();
-        if (!"ADMIN".equalsIgnoreCase(ctx.role())) {
-            throw new UnauthorizedException("Admin role required");
-        }
-    }
 }

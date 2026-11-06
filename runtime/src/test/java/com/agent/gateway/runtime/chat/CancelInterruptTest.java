@@ -116,8 +116,9 @@ class CancelInterruptTest {
         assertTrue(started.await(2, TimeUnit.SECONDS));
         String taskId = taskIdRef.get();
 
-        assertThrows(NotFoundException.class, () -> chatService.cancel("tB", taskId));
-        chatService.cancel("tA", taskId);
+        assertThrows(NotFoundException.class, () ->
+                chatService.cancel(new TenantContext("tB", "keyB", "RUNTIME", "standard", "platform"), taskId));
+        chatService.cancel(tenant, taskId);
         worker.join(2000);
         assertEquals(1, interrupts.get());
     }

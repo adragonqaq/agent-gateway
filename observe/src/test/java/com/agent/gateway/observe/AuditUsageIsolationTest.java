@@ -81,4 +81,22 @@ class AuditUsageIsolationTest {
         assertEquals(999L, usage.summarizeForTask("tB", "taskX").get("prompt_tokens"));
         assertTrue(usage.summarizeForTask("tA", "missing").isEmpty());
     }
+
+    @Test
+    void userScopedListAndSumDoNotLeakAcrossUsers() {
+        audit.record("tA", "usr_1", "CHAT_COMPLETE", "a1", "{}");
+        audit.record("tA", "usr_2", "CHAT_COMPLETE", "a2", "{}");
+        usage.record("tA", "usr_1", "t1", "total_tokens", 10);
+        usage.record("tA", "usr_2", "t2", "total_tokens", 90);
+
+        List<Map<String, Object>> mine = audit.listRecent("tA", "usr_1", 10);
+        assertEquals(1, mine.size());
+        assertEquals("a1", mine.get(0).get("ref_id"));
+
+        assertEquals(10L, usage.sumForUser("tA", "usr_1", "total_tokens"));
+        assertEquals(100L, usage.sumForTenant("tA", "total_tokens"));
+        List<Map<String, Object>> meUsage = usage.summarize("tA", "usr_1");
+        assertEquals(1, meUsage.size());
+        assertEquals(10L, ((Number) meUsage.get(0).get("total")).longValue());
+    }
 }

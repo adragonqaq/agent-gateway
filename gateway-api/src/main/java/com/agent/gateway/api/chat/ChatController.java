@@ -90,7 +90,7 @@ public class ChatController {
     @PostMapping("/runs/{taskId}/cancel")
     public Map<String, String> cancel(@PathVariable String taskId) {
         TenantContext tenant = TenantContextHolder.require();
-        agentChatService.cancel(tenant.tenantId(), taskId);
+        agentChatService.cancel(tenant, taskId);
         return Map.of("status", "cancelled");
     }
 }

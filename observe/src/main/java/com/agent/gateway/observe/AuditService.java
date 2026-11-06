@@ -25,7 +25,7 @@ public class AuditService {
     }
 
     /**
-     * 记录一条租户审计事件。
+     * 记录一条租户审计事件（无用户，兼容 API Key 路径）。
      *
      * @param tenantId 租户 ID
      * @param eventType 事件类型
@@ -33,14 +33,26 @@ public class AuditService {
      * @param detailJson 详情 JSON
      */
     public void record(String tenantId, String eventType, String refId, String detailJson) {
-        // 写入前校验租户，保证审计行可按租户隔离查询
+        record(tenantId, null, eventType, refId, detailJson);
+    }
+
+    /**
+     * 记录一条租户审计事件。
+     *
+     * @param tenantId 租户 ID
+     * @param userId 操作用户；可空（API Key）
+     * @param eventType 事件类型
+     * @param refId 关联业务 ID
+     * @param detailJson 详情 JSON
+     */
+    public void record(String tenantId, String userId, String eventType, String refId, String detailJson) {
         String tid = TenantIds.require(tenantId);
         jdbc.update("""
-                INSERT INTO gw_audit_event (id, tenant_id, event_type, ref_id, detail_json)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO gw_audit_event (id, tenant_id, user_id, event_type, ref_id, detail_json)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 "aud_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16),
-                tid, eventType, refId, detailJson);
+                tid, blankToNull(userId), eventType, refId, detailJson);
     }
 
     /**
@@ -50,7 +62,6 @@ public class AuditService {
      * @return 事件数；查询空结果按 0
      */
     public int countForTenant(String tenantId) {
-        // COUNT 条件带 tenant_id，避免跨租户汇总
         Integer n = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM gw_audit_event WHERE tenant_id = ?",
                 Integer.class, TenantIds.require(tenantId));
@@ -62,18 +73,42 @@ public class AuditService {
      *
      * @param tenantId 租户 ID
      * @param limit 最大条数（上限 200）
-     * @return 事件摘要列表；不含其他租户数据
+     * @return 事件摘要列表
      */
     public List<Map<String, Object>> listRecent(String tenantId, int limit) {
+        return listRecent(tenantId, null, limit);
+    }
+
+    /**
+     * 列出最近审计；{@code userId} 非空时仅该用户。
+     *
+     * @param tenantId 租户
+     * @param userId 用户过滤；null 表示全项目
+     * @param limit 条数上限
+     * @return 事件列表
+     */
+    public List<Map<String, Object>> listRecent(String tenantId, String userId, int limit) {
         String tid = TenantIds.require(tenantId);
         int n = Math.max(1, Math.min(limit, 200));
-        // 强制 tenant_id 谓词，查询 API 也不能跨租户读
+        if (userId == null || userId.isBlank()) {
+            return jdbc.queryForList("""
+                    SELECT id, user_id, event_type, ref_id, detail_json, created_at
+                    FROM gw_audit_event
+                    WHERE tenant_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """, tid, n);
+        }
         return jdbc.queryForList("""
-                SELECT id, event_type, ref_id, detail_json, created_at
+                SELECT id, user_id, event_type, ref_id, detail_json, created_at
                 FROM gw_audit_event
-                WHERE tenant_id = ?
+                WHERE tenant_id = ? AND user_id = ?
                 ORDER BY created_at DESC
                 LIMIT ?
-                """, tid, n);
+                """, tid, userId.trim(), n);
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 }

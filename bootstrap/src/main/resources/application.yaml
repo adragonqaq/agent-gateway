@@ -76,6 +76,12 @@ gateway:
   cors:
     # 浏览器前端 Origin 白名单（逗号分隔）；Vite 默认 5173
     allowed-origins: ${GATEWAY_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  auth:
+    # 用户 JWT（HttpOnly Cookie）；生产必须更换
+    jwt-secret: ${GATEWAY_JWT_SECRET:dev-only-change-me-please-32bytes-min}
+    access-ttl-seconds: ${GATEWAY_JWT_ACCESS_TTL:3600}
+    refresh-ttl-seconds: ${GATEWAY_JWT_REFRESH_TTL:1209600}
+    cookie-secure: ${GATEWAY_COOKIE_SECURE:false}
 
 # 日志：MDC 贯穿 traceId / taskId，便于按链路检索
 logging:

@@ -103,7 +103,7 @@ class CancelEmitsOnThrowTest {
         worker.start();
         assertTrue(started.await(2, TimeUnit.SECONDS));
         Thread.sleep(50);
-        chatService.cancel("tA", taskIdRef.get());
+        chatService.cancel(tenant, taskIdRef.get());
         worker.join(3000);
         assertTrue(types.contains("cancel"), "types=" + types);
         assertTrue(jdbc.queryForObject(

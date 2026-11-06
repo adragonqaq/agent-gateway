@@ -31,9 +31,9 @@
 - Modify: `bootstrap/src/main/resources/db/schema.sql`
 - Modify: all module `schema-h2.sql`
 
-- [ ] Add `gw_user`, `gw_project_member`
-- [ ] `ALTER` / columns: `gw_usage_event.user_id`, `gw_audit_event.user_id`
-- [ ] Commit
+- [x] Add `gw_user`, `gw_project_member`
+- [x] `ALTER` / columns: `gw_usage_event.user_id`, `gw_audit_event.user_id`
+- [x] Commit
 
 ### Task 2: Tenant — user + membership + password + JWT
 
@@ -47,7 +47,7 @@
 - Modify: `tenant/pom.xml` — jjwt + spring-security-crypto
 - Test: register hashes password; jwt round-trip; membership lookup
 
-- [ ] Failing tests → implement → green → commit
+- [x] Failing tests → implement → green → commit
 
 ### Task 3: Auth API + dual filter
 
@@ -59,7 +59,7 @@
 - Cookie: `Set-Cookie` on login/register/refresh; clear on logout
 - Require `X-Project-Id` for JWT path on `/v1/**` business routes (except `/v1/auth/**`)
 
-- [ ] MVC tests: register → me；JWT chat path mock；Key path still works → commit
+- [x] MVC tests: register → me；JWT chat path mock；Key path still works → commit
 
 ### Task 4: Observe + Runtime user_id / scope
 
@@ -69,7 +69,7 @@
 - Modify: observe list APIs — `scope=me|project`; member forced to `me`
 - Modify: quota snapshot — include `myTokenUsed` when userId present
 
-- [ ] Isolation tests with user_id → commit
+- [x] Isolation tests with user_id → commit
 
 ### Task 5: Project MCP read-only + owner admin via session
 
@@ -77,7 +77,7 @@
 - Create: `GET /v1/projects/{projectId}/mcp-servers` (member+)
 - Modify: admin MCP/quota — allow JWT owner of that tenant (not only ADMIN key)
 
-- [ ] Tests → commit
+- [x] Tests → commit
 
 ### Task 6: Web — auth + project switch + chat without Key
 
@@ -86,7 +86,7 @@
 - App: gate on `/me`; drop required API Key; send `X-Project-Id`
 - Observe panel: scope me/project by role
 
-- [ ] Manual: register → chat → see tokens → commit
+- [x] Manual: register → chat → see tokens → commit
 
 ### Task 7: Web — Console mode
 
@@ -94,7 +94,7 @@
 - Console: overview (quota/usage), MCP CRUD, issue API key, member list (read-only this round)
 - Top nav: 对话 | 控制台
 
-- [ ] Manual owner flows → commit
+- [x] Manual owner flows → commit
 
 ### Task 8: Push + smoke
 

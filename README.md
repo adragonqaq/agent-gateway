@@ -232,15 +232,14 @@ Client
 
 ---
 
-## 前端（对话台）
+## 前端（对话台 + 控制台）
 
 独立仓库 [`agent-gateway-web`](../agent-gateway-web)（与本仓平级）：
 
-- 设计：[docs/specs/2026-11-05-chat-console-design.md](docs/specs/2026-11-05-chat-console-design.md)
-- 空态居中输入 → 会话态消息流；确认卡 / 取消 / 本地会话
-- 本地：`npm run dev`（:5173），gateway 需允许 CORS（默认已含 Vite Origin）
-
-管理控制台（租户 / MCP / 策略）仍待后续。
+- 设计：[docs/specs/2026-11-05-chat-console-design.md](docs/specs/2026-11-05-chat-console-design.md)、[用户体系](docs/specs/2026-11-06-user-project-auth-design.md)
+- 邮箱密码注册/登录（HttpOnly JWT Cookie）+ 项目切换；对话不再依赖粘贴 API Key
+- 顶栏「对话 | 控制台」：owner 可管配额 / MCP / 签发 RUNTIME Key；member 只读 MCP 与本人观测
+- 本地：`npm run dev`（:5173），Vite 代理 `/v1` `/admin` 并携带 Cookie
 
 ---
 
@@ -285,11 +284,15 @@ Client
 | `GET/POST /admin/tenants/{id}/mcp-servers` | 列出 / 登记 MCP |
 | `POST /admin/tenants/{id}/mcp-servers/{serverId}/disable` | 停用 MCP |
 | `POST /admin/tenants/{id}/tool-policies` | 工具策略 |
+| `POST /v1/auth/register\|login\|refresh\|logout` | 用户会话（Cookie） |
+| `GET /v1/auth/me` | 当前用户与项目列表 |
 | `POST /v1/chat` | SSE 对话（异步边跑边推） |
 | `POST /v1/runs/{taskId}/cancel` | 取消任务 |
 | `POST /v1/confirms/{id}/approve\|deny` | 确认后续跑（SSE） |
+| `GET /v1/projects/{id}/mcp-servers` | 成员只读 MCP 列表 |
+| `GET /v1/observe/audit\|usage?scope=me\|project` | 观测（member 强制 me） |
 
-鉴权：`Authorization: Bearer <sk_...>` 或 `X-Api-Key: <sk_...>`。
+鉴权：机器用 `Authorization: Bearer sk_…` / `X-Api-Key`；浏览器用 Cookie JWT + `X-Project-Id`。项目 owner 亦可调 `/admin/tenants/{id}/*`（配额、MCP、签发 RUNTIME Key）。
 
 SSE `confirm` 事件示例：
 
