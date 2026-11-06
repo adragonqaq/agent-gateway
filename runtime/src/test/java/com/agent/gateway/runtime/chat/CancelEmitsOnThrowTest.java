@@ -84,7 +84,9 @@ class CancelEmitsOnThrowTest {
                 new AuditService(jdbc),
                 new UsageService(jdbc),
                 confirmGate,
-                new ActiveRunRegistry());
+                new ActiveRunRegistry(),
+                new com.agent.gateway.observe.SpanRecorder(jdbc),
+                new com.agent.gateway.observe.TraceQueryService(jdbc));
 
         TenantContext tenant = new TenantContext("tA", "keyA", "RUNTIME", "standard", "platform");
         CountDownLatch started = new CountDownLatch(1);
@@ -92,8 +94,8 @@ class CancelEmitsOnThrowTest {
         List<String> types = new ArrayList<>();
         Thread worker = new Thread(() -> chatService.startStreaming(
                 tenant, "conv", "hi", 5,
-                id -> {
-                    taskIdRef.set(id);
+                ready -> {
+                    taskIdRef.set(ready.taskId());
                     started.countDown();
                 },
                 event -> types.add(event.type())));

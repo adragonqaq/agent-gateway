@@ -1,5 +1,7 @@
 package com.agent.gateway.runtime.chat;
 
+import com.agent.gateway.observe.TraceContext;
+import com.agent.gateway.observe.TraceContextHolder;
 import com.agent.gateway.runtime.ConfirmGate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -37,10 +39,13 @@ public final class ConfirmPayloadFactory {
             String conversationId,
             String replyId,
             List<ToolCall> tools) {
+        TraceContext ctx = TraceContextHolder.get();
+        String traceId = ctx == null ? null : ctx.traceId();
         List<Map<String, Object>> calls = new ArrayList<>();
         for (ToolCall tool : tools) {
-            // 落库挂起并带上 conversationId，approve 后才能续跑同一会话
-            String confirmId = confirmGate.suspend(tenantId, taskId, conversationId, tool.name(), tool.argsJson());
+            // 落库挂起并带上 conversationId + traceId，approve 后续跑同一会话/链路
+            String confirmId = confirmGate.suspend(
+                    tenantId, taskId, conversationId, traceId, tool.name(), tool.argsJson());
             Map<String, Object> call = new LinkedHashMap<>();
             call.put("confirmId", confirmId);
             call.put("name", tool.name());
@@ -50,6 +55,9 @@ public final class ConfirmPayloadFactory {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("taskId", taskId);
         payload.put("conversationId", conversationId);
+        if (traceId != null && !traceId.isBlank()) {
+            payload.put("traceId", traceId);
+        }
         if (replyId != null && !replyId.isBlank()) {
             payload.put("replyId", replyId);
         }

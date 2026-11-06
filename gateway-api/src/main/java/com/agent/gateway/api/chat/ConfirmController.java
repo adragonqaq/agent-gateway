@@ -2,6 +2,7 @@ package com.agent.gateway.api.chat;
 
 import com.agent.gateway.api.auth.TenantContextHolder;
 import com.agent.gateway.api.sse.SseSupport;
+import com.agent.gateway.observe.TraceSupport;
 import com.agent.gateway.runtime.chat.AgentChatService;
 import com.agent.gateway.tenant.TenantContext;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Executor;
 
@@ -39,9 +41,6 @@ public class ConfirmController {
 
     /**
      * 批准待确认工具并续跑。
-     *
-     * @param confirmId 确认单 ID
-     * @return SSE 事件流
      */
     @PostMapping(value = "/{confirmId}/approve", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter approve(@PathVariable String confirmId) {
@@ -50,40 +49,38 @@ public class ConfirmController {
 
     /**
      * 拒绝待确认工具并续跑。
-     *
-     * @param confirmId 确认单 ID
-     * @return SSE 事件流
      */
     @PostMapping(value = "/{confirmId}/deny", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter deny(@PathVariable String confirmId) {
         return resume(confirmId, false);
     }
 
-    /**
-     * 统一异步续跑入口。
-     */
     private SseEmitter resume(String confirmId, boolean approved) {
         TenantContext tenant = TenantContextHolder.require();
         SseEmitter emitter = new SseEmitter(300_000L);
         Object lock = new Object();
-        chatStreamExecutor.execute(() -> {
+        chatStreamExecutor.execute(TraceSupport.wrap(() -> {
             try {
                 agentChatService.resumeAfterConfirmStreaming(
                         tenant,
                         confirmId,
                         approved,
                         5,
-                        taskId -> SseSupport.send(emitter, lock, "meta", Map.of(
-                                "taskId", taskId,
-                                "confirmId", confirmId,
-                                "approved", approved)),
+                        ready -> {
+                            Map<String, Object> meta = new LinkedHashMap<>();
+                            meta.put("taskId", ready.taskId());
+                            meta.put("confirmId", confirmId);
+                            meta.put("approved", approved);
+                            meta.put("traceId", ready.traceId());
+                            SseSupport.send(emitter, lock, "meta", meta);
+                        },
                         event -> SseSupport.send(emitter, lock, event.type(), event.data()));
                 SseSupport.complete(emitter, lock);
             } catch (Exception ex) {
                 SseSupport.send(emitter, lock, "error", ex.getMessage() == null ? "error" : ex.getMessage());
                 SseSupport.completeWithError(emitter, lock, ex);
             }
-        });
+        }));
         return emitter;
     }
 }

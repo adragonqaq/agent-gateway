@@ -55,7 +55,9 @@ class StreamingChatServiceTest {
                 new AuditService(jdbc),
                 new UsageService(jdbc),
                 confirmGate,
-                new ActiveRunRegistry());
+                new ActiveRunRegistry(),
+                new com.agent.gateway.observe.SpanRecorder(jdbc),
+                new com.agent.gateway.observe.TraceQueryService(jdbc));
     }
 
     @Test
@@ -63,7 +65,7 @@ class StreamingChatServiceTest {
         TenantContext tenant = new TenantContext("tA", "keyA", "RUNTIME", "standard", "platform");
         List<String> order = new ArrayList<>();
         AtomicBoolean ready = new AtomicBoolean(false);
-        chatService.startStreaming(tenant, "conv", "hi", 5, taskId -> {
+        chatService.startStreaming(tenant, "conv", "hi", 5, runReady -> {
             ready.set(true);
             order.add("ready");
         }, event -> {

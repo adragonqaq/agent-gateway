@@ -67,7 +67,9 @@ class EchoConfirmResumeTest {
                 new AuditService(jdbc),
                 new UsageService(jdbc),
                 confirmGate,
-                new ActiveRunRegistry());
+                new ActiveRunRegistry(),
+                new com.agent.gateway.observe.SpanRecorder(jdbc),
+                new com.agent.gateway.observe.TraceQueryService(jdbc));
     }
 
     @Test
@@ -105,7 +107,9 @@ class EchoConfirmResumeTest {
                 new AuditService(jdbc),
                 new UsageService(jdbc),
                 shortGate,
-                new ActiveRunRegistry());
+                new ActiveRunRegistry(),
+                new com.agent.gateway.observe.SpanRecorder(jdbc),
+                new com.agent.gateway.observe.TraceQueryService(jdbc));
         TenantContext tenant = new TenantContext("tA", "keyA", "RUNTIME", "standard", "platform");
         assertThrows(ExpiredConfirmationException.class,
                 () -> service.resumeAfterConfirm(tenant, confirmId, true, 5));

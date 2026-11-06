@@ -56,35 +56,45 @@ public class ConfirmGate {
     }
 
     /**
+     * 挂起一次待确认的工具调用（无 trace）。
+     */
+    public String suspend(String tenantId, String taskId, String conversationId, String toolName, String argsJson) {
+        return suspend(tenantId, taskId, conversationId, null, toolName, argsJson);
+    }
+
+    /**
      * 挂起一次待确认的工具调用。
      *
      * @param tenantId 租户 ID
      * @param taskId 任务 ID
      * @param conversationId 会话 ID，供后续续跑定位 Agent 状态
+     * @param traceId 全链路 ID；可空
      * @param toolName 工具名
      * @param argsJson 参数 JSON
      * @return 新确认单 ID
      */
-    public String suspend(String tenantId, String taskId, String conversationId, String toolName, String argsJson) {
+    public String suspend(
+            String tenantId,
+            String taskId,
+            String conversationId,
+            String traceId,
+            String toolName,
+            String argsJson) {
         String tid = TenantIds.require(tenantId);
         String id = "cfm_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         Instant expires = clock.instant().plus(timeout);
-        // 写入 PENDING，阻塞危险工具直至用户确认或超时
         jdbc.update("""
-                INSERT INTO gw_confirm (id, tenant_id, task_id, conversation_id, tool_name, args_json, status, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO gw_confirm
+                (id, tenant_id, task_id, conversation_id, trace_id, tool_name, args_json, status, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                id, tid, taskId, conversationId, toolName, argsJson, ConfirmDecision.PENDING.name(),
+                id, tid, taskId, conversationId, traceId, toolName, argsJson, ConfirmDecision.PENDING.name(),
                 java.sql.Timestamp.from(expires));
         return id;
     }
 
     /**
      * 用户确认该工具调用。
-     *
-     * @param tenantId 租户 ID
-     * @param confirmId 确认单 ID
-     * @return 更新后的确认单
      */
     public PendingConfirmation confirm(String tenantId, String confirmId) {
         return decide(tenantId, confirmId, ConfirmDecision.CONFIRMED);
@@ -92,10 +102,6 @@ public class ConfirmGate {
 
     /**
      * 用户拒绝该工具调用。
-     *
-     * @param tenantId 租户 ID
-     * @param confirmId 确认单 ID
-     * @return 更新后的确认单
      */
     public PendingConfirmation deny(String tenantId, String confirmId) {
         return decide(tenantId, confirmId, ConfirmDecision.DENIED);
@@ -103,12 +109,6 @@ public class ConfirmGate {
 
     /**
      * 将同一任务下仍为 PENDING 的确认单统一落成同一决策。
-     * <p>一张确认卡上多工具时，一次 approve/deny 应整卡结算，避免半放行。
-     *
-     * @param tenantId 租户 ID
-     * @param taskId 任务 ID
-     * @param decision CONFIRMED 或 DENIED
-     * @return 本轮被更新的确认单（含已是终态的跳过项之外的更新结果）
      */
     public List<PendingConfirmation> decideAllPendingForTask(String tenantId, String taskId, ConfirmDecision decision) {
         String tid = TenantIds.require(tenantId);
@@ -116,7 +116,6 @@ public class ConfirmGate {
                 .filter(p -> p.status() == ConfirmDecision.PENDING)
                 .toList();
         for (PendingConfirmation item : pending) {
-            // 逐条走 decide，复用过期校验与租户隔离
             decide(tid, item.id(), decision);
         }
         return listByTask(tid, taskId);
@@ -124,15 +123,11 @@ public class ConfirmGate {
 
     /**
      * 按任务列出该租户下的确认单。
-     *
-     * @param tenantId 租户 ID
-     * @param taskId 任务 ID
-     * @return 确认单列表
      */
     public List<PendingConfirmation> listByTask(String tenantId, String taskId) {
         String tid = TenantIds.require(tenantId);
         return jdbc.query("""
-                SELECT id, tenant_id, task_id, conversation_id, tool_name, args_json, status, expires_at
+                SELECT id, tenant_id, task_id, conversation_id, trace_id, tool_name, args_json, status, expires_at
                 FROM gw_confirm WHERE tenant_id = ? AND task_id = ?
                 ORDER BY created_at
                 """,
@@ -142,16 +137,12 @@ public class ConfirmGate {
 
     /**
      * 批量将已到期的 PENDING 确认单标记为 EXPIRED。
-     * <p>供定时扫描使用；惰性 {@link #get} 仍会单独过期单条。
-     *
-     * @param limit 本批最大条数
-     * @return 本批新过期的确认单
      */
     public List<PendingConfirmation> expireDue(int limit) {
         int n = Math.max(1, Math.min(limit, 500));
         Instant now = clock.instant();
         List<PendingConfirmation> due = jdbc.query("""
-                SELECT id, tenant_id, task_id, conversation_id, tool_name, args_json, status, expires_at
+                SELECT id, tenant_id, task_id, conversation_id, trace_id, tool_name, args_json, status, expires_at
                 FROM gw_confirm
                 WHERE status = ? AND expires_at < ?
                 ORDER BY expires_at
@@ -163,7 +154,6 @@ public class ConfirmGate {
                 n);
         List<PendingConfirmation> expired = new java.util.ArrayList<>();
         for (PendingConfirmation row : due) {
-            // 条件更新：仅 PENDING 才推进，避免与用户确认并发时覆盖 CONFIRMED
             int updated = jdbc.update(
                     "UPDATE gw_confirm SET status = ? WHERE id = ? AND tenant_id = ? AND status = ?",
                     ConfirmDecision.EXPIRED.name(), row.id(), row.tenantId(), ConfirmDecision.PENDING.name());
@@ -176,11 +166,6 @@ public class ConfirmGate {
 
     /**
      * 查询确认单；若仍为 PENDING 且已超时则标记 EXPIRED。
-     *
-     * @param tenantId 租户 ID
-     * @param confirmId 确认单 ID
-     * @return 当前确认单
-     * @throws NotFoundException 记录不存在
      */
     public PendingConfirmation get(String tenantId, String confirmId) {
         String tid = TenantIds.require(tenantId);
@@ -190,7 +175,6 @@ public class ConfirmGate {
         }
         PendingConfirmation pending = rows.get(0);
         if (pending.status() == ConfirmDecision.PENDING && clock.instant().isAfter(pending.expiresAt())) {
-            // 惰性过期：读取时才落库 EXPIRED，避免额外定时任务
             jdbc.update("UPDATE gw_confirm SET status = ? WHERE id = ? AND tenant_id = ?",
                     ConfirmDecision.EXPIRED.name(), confirmId, tid);
             return withStatus(pending, ConfirmDecision.EXPIRED);
@@ -198,14 +182,6 @@ public class ConfirmGate {
         return pending;
     }
 
-    /**
-     * 在 PENDING 状态下落库用户决策；已终态则原样返回。
-     *
-     * @param tenantId 租户 ID
-     * @param confirmId 确认单 ID
-     * @param decision CONFIRMED 或 DENIED
-     * @return 决策后的确认单
-     */
     private PendingConfirmation decide(String tenantId, String confirmId, ConfirmDecision decision) {
         PendingConfirmation current = get(tenantId, confirmId);
         if (current.status() == ConfirmDecision.EXPIRED) {
@@ -219,16 +195,9 @@ public class ConfirmGate {
         return withStatus(current, decision);
     }
 
-    /**
-     * 按租户+确认单 ID 加载行。
-     *
-     * @param tenantId 已校验租户 ID
-     * @param confirmId 确认单 ID
-     * @return 0 或 1 条记录
-     */
     private List<PendingConfirmation> load(String tenantId, String confirmId) {
         return jdbc.query("""
-                SELECT id, tenant_id, task_id, conversation_id, tool_name, args_json, status, expires_at
+                SELECT id, tenant_id, task_id, conversation_id, trace_id, tool_name, args_json, status, expires_at
                 FROM gw_confirm WHERE tenant_id = ? AND id = ?
                 """,
                 (rs, i) -> mapRow(rs),
@@ -241,6 +210,7 @@ public class ConfirmGate {
                 rs.getString("tenant_id"),
                 rs.getString("task_id"),
                 rs.getString("conversation_id"),
+                rs.getString("trace_id"),
                 rs.getString("tool_name"),
                 rs.getString("args_json"),
                 ConfirmDecision.valueOf(rs.getString("status")),
@@ -249,7 +219,7 @@ public class ConfirmGate {
 
     private static PendingConfirmation withStatus(PendingConfirmation src, ConfirmDecision status) {
         return new PendingConfirmation(
-                src.id(), src.tenantId(), src.taskId(), src.conversationId(),
+                src.id(), src.tenantId(), src.taskId(), src.conversationId(), src.traceId(),
                 src.toolName(), src.argsJson(), status, src.expiresAt());
     }
 }

@@ -10,6 +10,7 @@ import java.time.Instant;
  * @param tenantId 租户 ID
  * @param taskId 关联任务 ID
  * @param conversationId 会话 ID，续跑 Agent 时定位状态
+ * @param traceId 全链路 ID；续跑时复用
  * @param toolName 待确认工具名
  * @param argsJson 工具参数 JSON
  * @param status 当前决策状态
@@ -20,6 +21,7 @@ public record PendingConfirmation(
         String tenantId,
         String taskId,
         String conversationId,
+        String traceId,
         String toolName,
         String argsJson,
         ConfirmDecision status,

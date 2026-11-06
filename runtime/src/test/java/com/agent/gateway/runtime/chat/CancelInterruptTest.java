@@ -93,7 +93,9 @@ class CancelInterruptTest {
                 new AuditService(jdbc),
                 new UsageService(jdbc),
                 confirmGate,
-                new ActiveRunRegistry());
+                new ActiveRunRegistry(),
+                new com.agent.gateway.observe.SpanRecorder(jdbc),
+                new com.agent.gateway.observe.TraceQueryService(jdbc));
     }
 
     @Test
@@ -103,8 +105,8 @@ class CancelInterruptTest {
         AtomicReference<String> taskIdRef = new AtomicReference<>();
         Thread worker = new Thread(() -> chatService.startStreaming(
                 tenant, "conv", "hi", 5,
-                id -> {
-                    taskIdRef.set(id);
+                ready -> {
+                    taskIdRef.set(ready.taskId());
                     started.countDown();
                 },
                 event -> {

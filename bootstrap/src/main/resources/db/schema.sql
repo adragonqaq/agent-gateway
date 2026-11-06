@@ -63,9 +63,6 @@ CREATE TABLE IF NOT EXISTS gw_mcp_server (
     PRIMARY KEY (tenant_id, id),
     CONSTRAINT fk_gw_mcp_tenant FOREIGN KEY (tenant_id) REFERENCES gw_tenant(id)
 );
--- 兼容旧库：曾用 id 全局主键，多租户无法登记相同 server id（如 demo-mcp）
-ALTER TABLE gw_mcp_server DROP CONSTRAINT IF EXISTS gw_mcp_server_pkey;
-ALTER TABLE gw_mcp_server ADD PRIMARY KEY (tenant_id, id);
 CREATE INDEX IF NOT EXISTS idx_gw_mcp_tenant ON gw_mcp_server(tenant_id);
 COMMENT ON TABLE gw_mcp_server IS 'MCP Server 注册表：租户级远端工具服务连接配置';
 COMMENT ON COLUMN gw_mcp_server.id IS 'Server ID，如 mcp_xxx / demo-mcp';
@@ -153,23 +150,62 @@ CREATE TABLE IF NOT EXISTS gw_confirm (
     tenant_id       VARCHAR(64) NOT NULL,
     task_id         VARCHAR(64) NOT NULL,
     conversation_id VARCHAR(64),
+    trace_id        VARCHAR(64),
     tool_name       VARCHAR(128) NOT NULL,
     args_json       TEXT NOT NULL,
     status          VARCHAR(32) NOT NULL,
     expires_at      TIMESTAMP NOT NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- 已有库升级：CREATE IF NOT EXISTS 不会补新列
+ALTER TABLE gw_confirm ADD COLUMN IF NOT EXISTS trace_id VARCHAR(64);
 CREATE INDEX IF NOT EXISTS idx_gw_confirm_tenant_task ON gw_confirm(tenant_id, task_id);
 COMMENT ON TABLE gw_confirm IS '人工确认单：写工具挂起后等待 approve/deny';
 COMMENT ON COLUMN gw_confirm.id IS '确认单 ID，如 cfm_xxx';
 COMMENT ON COLUMN gw_confirm.tenant_id IS '所属租户 ID';
 COMMENT ON COLUMN gw_confirm.task_id IS '发起确认的聊天任务 ID';
 COMMENT ON COLUMN gw_confirm.conversation_id IS '会话 ID；续跑时定位 Agent 状态';
+COMMENT ON COLUMN gw_confirm.trace_id IS '全链路 traceId；approve/deny 续跑时复用';
 COMMENT ON COLUMN gw_confirm.tool_name IS '待确认工具名';
 COMMENT ON COLUMN gw_confirm.args_json IS '工具参数 JSON（展示与审计）';
 COMMENT ON COLUMN gw_confirm.status IS '状态：PENDING / CONFIRMED / DENIED / EXPIRED';
 COMMENT ON COLUMN gw_confirm.expires_at IS '过期时间（惰性读取 + 定时扫描）';
 COMMENT ON COLUMN gw_confirm.created_at IS '创建时间';
+
+-- -----------------------------------------------------------------------------
+-- 全链路 Trace Span：一轮对话（含 confirm 续跑）的可查询步骤树
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gw_trace_span (
+    id               VARCHAR(64) PRIMARY KEY,
+    tenant_id        VARCHAR(64) NOT NULL,
+    trace_id         VARCHAR(64) NOT NULL,
+    parent_span_id   VARCHAR(64),
+    conversation_id  VARCHAR(64),
+    task_id          VARCHAR(64),
+    name             VARCHAR(256) NOT NULL,
+    kind             VARCHAR(32) NOT NULL,
+    status           VARCHAR(32) NOT NULL,
+    started_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at         TIMESTAMP,
+    duration_ms      BIGINT,
+    attrs_json       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_gw_trace_span_trace ON gw_trace_span(tenant_id, trace_id);
+CREATE INDEX IF NOT EXISTS idx_gw_trace_span_conv ON gw_trace_span(tenant_id, conversation_id);
+COMMENT ON TABLE gw_trace_span IS '全链路 Trace Span：RUN/TOOL/CONFIRM/LLM 步骤树';
+COMMENT ON COLUMN gw_trace_span.id IS 'Span ID，如 spn_xxx';
+COMMENT ON COLUMN gw_trace_span.tenant_id IS '所属租户 ID';
+COMMENT ON COLUMN gw_trace_span.trace_id IS '链路 ID，如 trc_xxx；同轮 confirm 续跑共用';
+COMMENT ON COLUMN gw_trace_span.parent_span_id IS '父 Span ID；根 RUN 为空';
+COMMENT ON COLUMN gw_trace_span.conversation_id IS '会话 ID';
+COMMENT ON COLUMN gw_trace_span.task_id IS '本段任务 ID';
+COMMENT ON COLUMN gw_trace_span.name IS '展示名，如 chat.run / demo_weather';
+COMMENT ON COLUMN gw_trace_span.kind IS '类型：RUN / TOOL / CONFIRM / LLM';
+COMMENT ON COLUMN gw_trace_span.status IS '状态：OK / ERROR / CANCELLED / WAITING';
+COMMENT ON COLUMN gw_trace_span.started_at IS '开始时间';
+COMMENT ON COLUMN gw_trace_span.ended_at IS '结束时间；未结束可空';
+COMMENT ON COLUMN gw_trace_span.duration_ms IS '耗时毫秒；未结束可空';
+COMMENT ON COLUMN gw_trace_span.attrs_json IS '附加属性 JSON（工具参数摘要等）';
 
 -- -----------------------------------------------------------------------------
 -- 审计事件：谁在何时做了什么

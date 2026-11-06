@@ -2,6 +2,7 @@ package com.agent.gateway.api.chat;
 
 import com.agent.gateway.api.auth.TenantContextHolder;
 import com.agent.gateway.api.sse.SseSupport;
+import com.agent.gateway.observe.TraceSupport;
 import com.agent.gateway.runtime.chat.AgentChatService;
 import com.agent.gateway.tenant.TenantContext;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -47,7 +49,6 @@ public class ChatController {
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@RequestBody ChatRequest request) {
-        // 先取出租户：后台线程拿不到请求线程的 ThreadLocal
         TenantContext tenant = TenantContextHolder.require();
         String conversationId = request.conversationId() == null || request.conversationId().isBlank()
                 ? "conv_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)
@@ -56,24 +57,27 @@ public class ChatController {
         SseEmitter emitter = new SseEmitter(300_000L);
         Object lock = new Object();
 
-        // 立即返回 emitter，真正执行放到线程池，实现边跑边推
-        chatStreamExecutor.execute(() -> {
+        chatStreamExecutor.execute(TraceSupport.wrap(() -> {
             try {
                 agentChatService.startStreaming(
                         tenant,
                         conversationId,
                         request.message(),
                         5,
-                        taskId -> SseSupport.send(emitter, lock, "meta", Map.of(
-                                "taskId", taskId,
-                                "conversationId", conversationId)),
+                        ready -> {
+                            Map<String, Object> meta = new LinkedHashMap<>();
+                            meta.put("taskId", ready.taskId());
+                            meta.put("conversationId", conversationId);
+                            meta.put("traceId", ready.traceId());
+                            SseSupport.send(emitter, lock, "meta", meta);
+                        },
                         event -> SseSupport.send(emitter, lock, event.type(), event.data()));
                 SseSupport.complete(emitter, lock);
             } catch (Exception ex) {
                 SseSupport.send(emitter, lock, "error", ex.getMessage() == null ? "error" : ex.getMessage());
                 SseSupport.completeWithError(emitter, lock, ex);
             }
-        });
+        }));
         return emitter;
     }
 

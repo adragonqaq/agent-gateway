@@ -7,6 +7,7 @@ import com.agent.gateway.tools.ResolvedCatalog;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.ConfirmResult;
+import io.agentscope.core.event.ModelCallEndEvent;
 import io.agentscope.core.event.RequireUserConfirmEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.message.Msg;
@@ -69,6 +70,7 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
         AtomicReference<Boolean> awaitingConfirm = new AtomicReference<>(false);
         AtomicReference<Boolean> textDeltaEmitted = new AtomicReference<>(false);
         ToolCallTracker toolTracker = new ToolCallTracker();
+        TokenUsageCounter tokens = new TokenUsageCounter();
         try {
             agent.streamEvents(message, runtimeContext)
                     .doOnNext(scopeEvent -> {
@@ -77,6 +79,9 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
                             events.accept(mapConfirm(tenant.tenantId(), taskId, conversationId, confirmEvent));
                             awaitingConfirm.set(true);
                             return;
+                        }
+                        if (scopeEvent instanceof ModelCallEndEvent modelEnd) {
+                            tokens.add(modelEnd.getUsage());
                         }
                         if (scopeEvent instanceof TextBlockDeltaEvent) {
                             textDeltaEmitted.set(true);
@@ -111,7 +116,8 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
             stateSaver.accept("{\"interrupted\":true,\"prior\":"
                     + (priorState == null ? "\"\"" : priorState) + "}");
             events.accept(new AgentEvent("error", error.get().getMessage() == null ? "error" : error.get().getMessage()));
-            events.accept(AgentScopeEventMapper.done("error", elapsedMs));
+            events.accept(AgentScopeEventMapper.done(
+                    "error", elapsedMs, tokens.promptTokensOrNull(), tokens.completionTokensOrNull()));
             throw new IllegalStateException("AgentScope run failed", error.get());
         }
 
@@ -127,7 +133,8 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
             return;
         }
 
-        events.accept(AgentScopeEventMapper.done("ok", elapsedMs));
+        events.accept(AgentScopeEventMapper.done(
+                "ok", elapsedMs, tokens.promptTokensOrNull(), tokens.completionTokensOrNull()));
         String payload = "{\"last\":\"" + escape(answer.toString()) + "\",\"prior\":"
                 + (priorState == null ? "\"\"" : priorState) + "}";
         stateSaver.accept(payload);
@@ -181,6 +188,7 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
         AtomicReference<Boolean> awaitingConfirm = new AtomicReference<>(false);
         AtomicReference<Boolean> textDeltaEmitted = new AtomicReference<>(false);
         ToolCallTracker toolTracker = new ToolCallTracker();
+        TokenUsageCounter tokens = new TokenUsageCounter();
         try {
             // 空正文 + 确认结果元数据，框架会恢复挂起的工具调用
             agent.streamEvents(List.of(resumeMsg), runtimeContext)
@@ -189,6 +197,9 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
                             events.accept(mapConfirm(tenant.tenantId(), resumeTaskId, conversationId, confirmEvent));
                             awaitingConfirm.set(true);
                             return;
+                        }
+                        if (scopeEvent instanceof ModelCallEndEvent modelEnd) {
+                            tokens.add(modelEnd.getUsage());
                         }
                         if (scopeEvent instanceof TextBlockDeltaEvent) {
                             textDeltaEmitted.set(true);
@@ -215,7 +226,8 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
         long elapsedMs = elapsedMs(runStartedAt);
         if (error.get() != null) {
             events.accept(new AgentEvent("error", error.get().getMessage()));
-            events.accept(AgentScopeEventMapper.done("error", elapsedMs));
+            events.accept(AgentScopeEventMapper.done(
+                    "error", elapsedMs, tokens.promptTokensOrNull(), tokens.completionTokensOrNull()));
             throw new IllegalStateException("AgentScope resume failed", error.get());
         }
         if (Boolean.TRUE.equals(awaitingConfirm.get())) {
@@ -225,7 +237,8 @@ public class AgentScopeAgentExecutor implements AgentExecutor {
             }
             return;
         }
-        events.accept(AgentScopeEventMapper.done("ok", elapsedMs));
+        events.accept(AgentScopeEventMapper.done(
+                "ok", elapsedMs, tokens.promptTokensOrNull(), tokens.completionTokensOrNull()));
         stateSaver.accept("{\"last\":\"" + escape(answer.toString()) + "\",\"resumed\":true}");
         try {
             agent.saveAgentState(tenant.tenantId(), conversationId);

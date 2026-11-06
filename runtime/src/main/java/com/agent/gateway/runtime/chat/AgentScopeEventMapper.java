@@ -139,9 +139,30 @@ final class AgentScopeEventMapper {
      * 本轮收口：{@code {"status":"ok|error","elapsedMs":n}}。
      */
     static AgentEvent done(String status, long elapsedMs) {
+        return done(status, elapsedMs, null, null);
+    }
+
+    /**
+     * 本轮收口，可选附带本轮累计 token。
+     * <p>形如 {@code {"status":"ok","elapsedMs":n,"promptTokens":a,"completionTokens":b,"totalTokens":a+b}}；
+     * token 未知时省略字段。
+     *
+     * @param status 状态
+     * @param elapsedMs 耗时
+     * @param promptTokens 输入 token；null 表示未知
+     * @param completionTokens 输出 token；null 表示未知
+     */
+    static AgentEvent done(String status, long elapsedMs, Integer promptTokens, Integer completionTokens) {
         ObjectNode node = JSON.createObjectNode();
         node.put("status", status);
         node.put("elapsedMs", Math.max(0L, elapsedMs));
+        if (promptTokens != null && completionTokens != null) {
+            int prompt = Math.max(0, promptTokens);
+            int completion = Math.max(0, completionTokens);
+            node.put("promptTokens", prompt);
+            node.put("completionTokens", completion);
+            node.put("totalTokens", prompt + completion);
+        }
         return new AgentEvent("done", write(node));
     }
 

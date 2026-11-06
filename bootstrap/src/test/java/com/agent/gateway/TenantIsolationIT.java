@@ -66,7 +66,9 @@ class TenantIsolationIT {
         TenantToolCatalog catalog = new TenantToolCatalog(mcpRegistry, new PolicyEngine(jdbc), poolProvider);
         chatService = new AgentChatService(
                 runGate, catalog, stateStore, new EchoAgentExecutor(new CatalogFingerprintTracker(), confirmGate), new CatalogFingerprintTracker(),
-                new AuditService(jdbc), new UsageService(jdbc), confirmGate, new ActiveRunRegistry());
+                new AuditService(jdbc), new UsageService(jdbc), confirmGate, new ActiveRunRegistry(),
+                new com.agent.gateway.observe.SpanRecorder(jdbc),
+                new com.agent.gateway.observe.TraceQueryService(jdbc));
 
         tenantRepo.insertTenant(new TenantRecord("tA", "A", "ACTIVE", "standard", "platform", 5));
         tenantRepo.insertTenant(new TenantRecord("tB", "B", "ACTIVE", "standard", "platform", 5));

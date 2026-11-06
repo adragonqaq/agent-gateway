@@ -72,6 +72,23 @@ class AgentScopeEventMapperTest {
     }
 
     @Test
+    void donePayloadIncludesTokenUsageWhenPresent() {
+        AgentEvent done = AgentScopeEventMapper.done("ok", 42, 100, 20);
+        assertTrue(done.data().contains("\"promptTokens\":100"));
+        assertTrue(done.data().contains("\"completionTokens\":20"));
+        assertTrue(done.data().contains("\"totalTokens\":120"));
+    }
+
+    @Test
+    void donePayloadOmitsTokensWhenUnknown() {
+        AgentEvent done = AgentScopeEventMapper.done("ok", 42, null, null);
+        assertTrue(done.data().contains("\"elapsedMs\":42"));
+        assertTrue(!done.data().contains("promptTokens"));
+        assertTrue(!done.data().contains("completionTokens"));
+        assertTrue(!done.data().contains("totalTokens"));
+    }
+
+    @Test
     void skipsFinalResultWhenTextDeltasAlreadyStreamed() {
         Msg result = Msg.builder().role(MsgRole.ASSISTANT).textContent("hello full").build();
         AgentResultEvent finalEvent = new AgentResultEvent(result);
