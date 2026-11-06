@@ -98,7 +98,7 @@
 
 ### Task 8: Push + smoke
 
-- [ ] Push both repos; docker schema ALTER applied; README auth section
+- [x] Push both repos; docker schema ALTER applied; README auth section
 
 ---
 
