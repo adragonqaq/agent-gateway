@@ -82,7 +82,11 @@ final class AgentScopeEventMapper {
             if (textDeltaAlreadyEmitted) {
                 return Optional.empty();
             }
-            return Optional.of(new AgentEvent("answer", extractText(e.getResult())));
+            String answer = AnswerMarkupSanitizer.sanitize(extractText(e.getResult()));
+            if (answer.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(new AgentEvent("answer", answer));
         }
         return Optional.empty();
     }

@@ -64,6 +64,20 @@ class AgentScopeEventMapperTest {
     }
 
     @Test
+    void stripsToolCallMarkupFromAgentResult() {
+        Msg msg = Msg.builder()
+                .role(MsgRole.ASSISTANT)
+                .textContent("查天气\n<tool_call>{\"name\":\"get_weather\"}</tool_call>\n完成")
+                .build();
+        AgentEvent answer = AgentScopeEventMapper.map(new AgentResultEvent(msg)).orElseThrow();
+        assertEquals("answer", answer.type());
+        assertTrue(answer.data().contains("查天气"));
+        assertTrue(answer.data().contains("完成"));
+        assertTrue(!answer.data().contains("tool_call"));
+        assertTrue(!answer.data().contains("get_weather"));
+    }
+
+    @Test
     void donePayloadIncludesElapsed() {
         AgentEvent done = AgentScopeEventMapper.done("ok", 42);
         assertEquals("done", done.type());
