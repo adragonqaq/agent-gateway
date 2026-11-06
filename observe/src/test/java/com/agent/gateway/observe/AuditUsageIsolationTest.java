@@ -67,4 +67,18 @@ class AuditUsageIsolationTest {
         assertEquals(1, b.size());
         assertEquals(9L, ((Number) b.get(0).get("total")).longValue());
     }
+
+    @Test
+    void usageForTaskIsScopedAndAggregated() {
+        usage.record("tA", "taskX", "prompt_tokens", 100);
+        usage.record("tA", "taskX", "completion_tokens", 20);
+        usage.record("tA", "taskY", "prompt_tokens", 9);
+        usage.record("tB", "taskX", "prompt_tokens", 999);
+        Map<String, Long> x = usage.summarizeForTask("tA", "taskX");
+        assertEquals(100L, x.get("prompt_tokens"));
+        assertEquals(20L, x.get("completion_tokens"));
+        assertTrue(usage.summarizeForTask("tB", "taskX").containsKey("prompt_tokens"));
+        assertEquals(999L, usage.summarizeForTask("tB", "taskX").get("prompt_tokens"));
+        assertTrue(usage.summarizeForTask("tA", "missing").isEmpty());
+    }
 }

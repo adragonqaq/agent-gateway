@@ -2,6 +2,7 @@ package com.agent.gateway.runtime.chat;
 
 import com.agent.gateway.memory.SessionStateStore;
 import com.agent.gateway.observe.AuditService;
+import com.agent.gateway.observe.QuotaService;
 import com.agent.gateway.observe.SpanKind;
 import com.agent.gateway.observe.SpanRecord;
 import com.agent.gateway.observe.SpanRecorder;
@@ -48,6 +49,7 @@ public class AgentChatService {
     private final CatalogFingerprintTracker fingerprintTracker;
     private final AuditService auditService;
     private final UsageService usageService;
+    private final QuotaService quotaService;
     private final ConfirmGate confirmGate;
     private final ActiveRunRegistry activeRuns;
     private final SpanRecorder spanRecorder;
@@ -64,6 +66,7 @@ public class AgentChatService {
             CatalogFingerprintTracker fingerprintTracker,
             AuditService auditService,
             UsageService usageService,
+            QuotaService quotaService,
             ConfirmGate confirmGate,
             ActiveRunRegistry activeRuns,
             SpanRecorder spanRecorder,
@@ -75,6 +78,7 @@ public class AgentChatService {
         this.fingerprintTracker = fingerprintTracker;
         this.auditService = auditService;
         this.usageService = usageService;
+        this.quotaService = quotaService;
         this.confirmGate = confirmGate;
         this.activeRuns = activeRuns;
         this.spanRecorder = spanRecorder;
@@ -106,6 +110,7 @@ public class AgentChatService {
             int maxConcurrent,
             Consumer<RunReady> onReady,
             Consumer<AgentEvent> sink) {
+        quotaService.requireTokenQuotaAvailable(tenant.tenantId());
         String taskId = "task_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         String traceId = TraceIds.newTraceId();
         RunGate.AcquireResult acquired = runGate.tryAcquire(tenant.tenantId(), taskId, maxConcurrent);
@@ -232,6 +237,10 @@ public class AgentChatService {
                 approved ? "CONFIRM_APPROVE" : "CONFIRM_DENY",
                 confirmId,
                 "{\"taskId\":\"" + anchor.taskId() + "\",\"traceId\":\"" + traceId + "\"}");
+
+        if (approved) {
+            quotaService.requireTokenQuotaAvailable(tenant.tenantId());
+        }
 
         String resumeTaskId = "task_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         RunGate.AcquireResult acquired = runGate.tryAcquire(tenant.tenantId(), resumeTaskId, maxConcurrent);

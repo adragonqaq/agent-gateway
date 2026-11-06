@@ -1,6 +1,7 @@
 package com.agent.gateway.api.admin;
 
 import com.agent.gateway.api.auth.TenantContextHolder;
+import com.agent.gateway.observe.QuotaService;
 import com.agent.gateway.tenant.IssuedApiKey;
 import com.agent.gateway.tenant.TenantAdminService;
 import com.agent.gateway.tenant.TenantContext;
@@ -8,6 +9,7 @@ import com.agent.gateway.tenant.TenantRecord;
 import com.agent.gateway.tenant.UnauthorizedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,12 +27,15 @@ import java.util.Map;
 public class TenantAdminController {
 
     private final TenantAdminService tenantAdminService;
+    private final QuotaService quotaService;
 
     /**
      * @param tenantAdminService 租户管理服务
+     * @param quotaService 配额服务
      */
-    public TenantAdminController(TenantAdminService tenantAdminService) {
+    public TenantAdminController(TenantAdminService tenantAdminService, QuotaService quotaService) {
         this.tenantAdminService = tenantAdminService;
+        this.quotaService = quotaService;
     }
 
     /**
@@ -77,6 +82,32 @@ public class TenantAdminController {
                 "apiKey", issued.rawKey(),
                 "prefix", issued.prefix(),
                 "role", issued.role());
+    }
+
+    /**
+     * 设置租户累计 token 配额；{@code tokenQuota=null} 表示不限额。
+     *
+     * @param tenantId 目标租户
+     * @param body 请求体，含 tokenQuota
+     * @return 配额快照
+     */
+    @PutMapping("/{tenantId}/quota")
+    public Map<String, Object> setQuota(
+            @PathVariable String tenantId,
+            @RequestBody Map<String, Object> body) {
+        requireAdmin();
+        Object raw = body == null ? null : body.get("tokenQuota");
+        Long quota = null;
+        if (raw instanceof Number n) {
+            quota = n.longValue();
+        } else if (raw != null && !String.valueOf(raw).isBlank() && !"null".equalsIgnoreCase(String.valueOf(raw))) {
+            quota = Long.parseLong(String.valueOf(raw));
+        }
+        if (quota != null && quota < 0) {
+            throw new IllegalArgumentException("tokenQuota must be >= 0 or null");
+        }
+        quotaService.setTokenQuota(tenantId, quota);
+        return quotaService.snapshot(tenantId);
     }
 
     /**

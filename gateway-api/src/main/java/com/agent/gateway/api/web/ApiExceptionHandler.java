@@ -1,5 +1,6 @@
 package com.agent.gateway.api.web;
 
+import com.agent.gateway.observe.QuotaExceededException;
 import com.agent.gateway.runtime.ExpiredConfirmationException;
 import com.agent.gateway.runtime.NotFoundException;
 import com.agent.gateway.tenant.UnauthorizedException;
@@ -8,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -59,5 +61,20 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> conflict(IllegalStateException ex) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("error", ex.getMessage()));
+    }
+
+    /**
+     * Token 配额耗尽 → 429。
+     *
+     * @param ex 配额异常
+     * @return 错误响应（含 used/quota）
+     */
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<Map<String, Object>> quotaExceeded(QuotaExceededException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", ex.getMessage());
+        body.put("used", ex.used());
+        body.put("quota", ex.quota());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
     }
 }

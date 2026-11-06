@@ -74,4 +74,34 @@ public class UsageService {
                 ORDER BY metric
                 """, tid);
     }
+
+    /**
+     * 按任务汇总用量（用于对话台回填本轮 token）。
+     *
+     * @param tenantId 租户
+     * @param taskId 任务 ID
+     * @return metric → total；无数据时为空 map
+     */
+    public Map<String, Long> summarizeForTask(String tenantId, String taskId) {
+        String tid = TenantIds.require(tenantId);
+        if (taskId == null || taskId.isBlank()) {
+            return Map.of();
+        }
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT metric, COALESCE(SUM(amount),0) AS total
+                FROM gw_usage_event
+                WHERE tenant_id = ? AND task_id = ?
+                GROUP BY metric
+                """, tid, taskId);
+        Map<String, Long> out = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object metric = row.get("metric");
+            Object total = row.get("total");
+            if (metric == null) {
+                continue;
+            }
+            out.put(String.valueOf(metric), total == null ? 0L : ((Number) total).longValue());
+        }
+        return out;
+    }
 }

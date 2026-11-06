@@ -2,6 +2,7 @@ package com.agent.gateway.api.observe;
 
 import com.agent.gateway.api.auth.TenantContextHolder;
 import com.agent.gateway.observe.AuditService;
+import com.agent.gateway.observe.QuotaService;
 import com.agent.gateway.observe.TraceQueryService;
 import com.agent.gateway.observe.UsageService;
 import com.agent.gateway.tenant.TenantContext;
@@ -24,19 +25,23 @@ public class ObserveController {
 
     private final AuditService auditService;
     private final UsageService usageService;
+    private final QuotaService quotaService;
     private final TraceQueryService traceQueryService;
 
     /**
      * @param auditService 审计服务
      * @param usageService 用量服务
+     * @param quotaService 配额
      * @param traceQueryService Trace 查询
      */
     public ObserveController(
             AuditService auditService,
             UsageService usageService,
+            QuotaService quotaService,
             TraceQueryService traceQueryService) {
         this.auditService = auditService;
         this.usageService = usageService;
+        this.quotaService = quotaService;
         this.traceQueryService = traceQueryService;
     }
 
@@ -57,6 +62,27 @@ public class ObserveController {
     public List<Map<String, Object>> usageSummary() {
         TenantContext tenant = TenantContextHolder.require();
         return usageService.summarizeForTenant(tenant.tenantId());
+    }
+
+    /**
+     * 本租户 token 配额快照（quota / used / remaining）。
+     */
+    @GetMapping("/quota")
+    public Map<String, Object> quotaSnapshot() {
+        TenantContext tenant = TenantContextHolder.require();
+        return quotaService.snapshot(tenant.tenantId());
+    }
+
+    /**
+     * 按任务汇总用量（对话台回填本轮 token）。
+     *
+     * @param taskId 任务 ID
+     * @return metric → total
+     */
+    @GetMapping("/usage/tasks/{taskId}")
+    public Map<String, Long> usageForTask(@PathVariable String taskId) {
+        TenantContext tenant = TenantContextHolder.require();
+        return usageService.summarizeForTask(tenant.tenantId(), taskId);
     }
 
     /**

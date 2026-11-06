@@ -15,8 +15,11 @@ CREATE TABLE IF NOT EXISTS gw_tenant (
     model_tier           VARCHAR(64) NOT NULL DEFAULT 'standard',
     credential_binding   VARCHAR(64) NOT NULL DEFAULT 'platform',
     max_concurrent       INT NOT NULL DEFAULT 5,
+    token_quota          BIGINT,
     created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- 已有库升级：累计 token 上限；NULL=不限额
+ALTER TABLE gw_tenant ADD COLUMN IF NOT EXISTS token_quota BIGINT;
 COMMENT ON TABLE gw_tenant IS '租户主表：SaaS 租户档案与运行配额';
 COMMENT ON COLUMN gw_tenant.id IS '租户主键，如 ten_xxx';
 COMMENT ON COLUMN gw_tenant.name IS '租户展示名';
@@ -24,6 +27,7 @@ COMMENT ON COLUMN gw_tenant.status IS '租户状态：ACTIVE / SUSPENDED';
 COMMENT ON COLUMN gw_tenant.model_tier IS '模型档位（路由/计费）';
 COMMENT ON COLUMN gw_tenant.credential_binding IS '凭证绑定方式：platform / byok 等';
 COMMENT ON COLUMN gw_tenant.max_concurrent IS '该租户最大并发任务数';
+COMMENT ON COLUMN gw_tenant.token_quota IS '累计 total_tokens 上限；NULL 表示不限额';
 COMMENT ON COLUMN gw_tenant.created_at IS '创建时间';
 
 -- -----------------------------------------------------------------------------

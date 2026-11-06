@@ -64,6 +64,7 @@ class ChatTraceIntegrationTest {
                 new CatalogFingerprintTracker(),
                 new AuditService(jdbc),
                 new UsageService(jdbc),
+                new com.agent.gateway.observe.QuotaService(jdbc, new UsageService(jdbc)),
                 confirmGate,
                 new ActiveRunRegistry(),
                 recorder,

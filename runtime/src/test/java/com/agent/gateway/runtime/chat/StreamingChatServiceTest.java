@@ -54,6 +54,7 @@ class StreamingChatServiceTest {
                 new CatalogFingerprintTracker(),
                 new AuditService(jdbc),
                 new UsageService(jdbc),
+                new com.agent.gateway.observe.QuotaService(jdbc, new UsageService(jdbc)),
                 confirmGate,
                 new ActiveRunRegistry(),
                 new com.agent.gateway.observe.SpanRecorder(jdbc),
